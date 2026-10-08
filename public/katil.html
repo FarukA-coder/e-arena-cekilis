@@ -22,6 +22,11 @@
       <h1 class="mobile-title">E-Arena Çekiliş</h1>
       <p class="mobile-subtitle">Canlı etkinlik çekiliş çarkına katılmak için bilgilerini gir.</p>
 
+      <!-- Kayıtlar Kapalı Uyarı Banner'ı -->
+      <div id="closedBanner" class="alert-toast warning" style="display: none;">
+        🔒 Çekiliş kayıtları geçici olarak durdurulmuştur.
+      </div>
+
       <!-- Bildirim Mesajı (Hata / Başarı) -->
       <div id="alertBox" class="alert-toast"></div>
 
@@ -41,14 +46,18 @@
         </div>
 
         <div class="form-group">
-          <label for="studentIdInput" class="form-label">Öğrenci No / Telefon</label>
+          <label for="studentIdInput" class="form-label">Öğrenci Numarası (9 Haneli)</label>
           <input 
             type="text" 
             id="studentIdInput" 
             class="form-input" 
-            placeholder="Örn: 220101001 veya 0532..." 
+            placeholder="Örn: 220101001" 
             required 
-            maxlength="30"
+            maxlength="9"
+            minlength="9"
+            pattern="\d{9}"
+            inputmode="numeric"
+            autocomplete="off"
           >
         </div>
 
@@ -74,7 +83,7 @@
             <span class="detail-value" id="ticketName">-</span>
           </div>
           <div class="detail-row">
-            <span class="detail-label">Numara:</span>
+            <span class="detail-label">Öğrenci No:</span>
             <span class="detail-value" id="ticketId">-</span>
           </div>
           <div class="detail-row">
@@ -102,11 +111,19 @@
       const studentIdInput = document.getElementById('studentIdInput');
       const submitBtn = document.getElementById('submitBtn');
       const alertBox = document.getElementById('alertBox');
+      const closedBanner = document.getElementById('closedBanner');
 
       const ticketSuccess = document.getElementById('ticketSuccess');
       const ticketName = document.getElementById('ticketName');
       const ticketId = document.getElementById('ticketId');
       const reRegisterBtn = document.getElementById('reRegisterBtn');
+
+      let isRegistrationOpen = true;
+
+      // Öğrenci numarası girişini sadece rakam ve en fazla 9 hane ile sınırla
+      studentIdInput.addEventListener('input', (e) => {
+        e.target.value = e.target.value.replace(/\D/g, '').slice(0, 9);
+      });
 
       function showAlert(msg, isError = true) {
         alertBox.textContent = msg;
@@ -116,6 +133,23 @@
 
       function hideAlert() {
         alertBox.style.display = 'none';
+      }
+
+      function updateRegistrationState(isOpen) {
+        isRegistrationOpen = Boolean(isOpen);
+        if (isRegistrationOpen) {
+          closedBanner.style.display = 'none';
+          nameInput.disabled = false;
+          studentIdInput.disabled = false;
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Kayıt Ol ve Katıl 🚀';
+        } else {
+          closedBanner.style.display = 'block';
+          nameInput.disabled = true;
+          studentIdInput.disabled = true;
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Kayıtlar Geçici Olarak Durduruldu 🔒';
+        }
       }
 
       function showTicket(data) {
@@ -132,8 +166,24 @@
         nameInput.value = '';
         studentIdInput.value = '';
         hideAlert();
-        nameInput.focus();
+        updateRegistrationState(isRegistrationOpen);
+        if (isRegistrationOpen) {
+          nameInput.focus();
+        }
       }
+
+      // Socket Bağlantı ve Durum Dinleyicileri
+      socket.on('init_data', (data) => {
+        if (data.registrationOpen !== undefined) {
+          updateRegistrationState(data.registrationOpen);
+        }
+      });
+
+      socket.on('registration_status_changed', (data) => {
+        if (data.registrationOpen !== undefined) {
+          updateRegistrationState(data.registrationOpen);
+        }
+      });
 
       // Daha önce katılmış mı kontrol et (LocalStorage)
       const savedUser = localStorage.getItem('earena_participant');
@@ -153,11 +203,25 @@
         e.preventDefault();
         hideAlert();
 
+        if (!isRegistrationOpen) {
+          showAlert('Çekiliş kayıtları geçici olarak durdurulmuştur!');
+          return;
+        }
+
         const name = nameInput.value.trim();
         const studentId = studentIdInput.value.trim();
 
-        if (!name || !studentId) {
-          showAlert('Lütfen tüm alanları doldurun!');
+        if (!name || name.length < 2) {
+          showAlert('Lütfen geçerli bir Ad Soyad giriniz (en az 2 karakter)!');
+          nameInput.focus();
+          return;
+        }
+
+        // 9 Haneli Öğrenci Numarası Doğrulaması
+        const studentIdRegex = /^\d{9}$/;
+        if (!studentIdRegex.test(studentId)) {
+          showAlert('Öğrenci numarası tam olarak 9 basamaklı rakamlardan oluşmalıdır!');
+          studentIdInput.focus();
           return;
         }
 

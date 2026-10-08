@@ -25,6 +25,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Yapı: { id, name, studentId, timestamp }
 let participants = [];
 
+// Canlı Katılım Durumu (Yönetici Kontrolü - Varsayılan: Açık)
+let registrationOpen = true;
+
 // Yerel IP Adresini otomatik tespit etme
 function getLocalIpAddress() {
   const interfaces = os.networkInterfaces();
@@ -87,7 +90,8 @@ app.get('/api/info', async (req, res) => {
   res.json({
     mobileJoinUrl: joinUrl,
     qrDataUrl: qrUrl,
-    participantCount: participants.length
+    participantCount: participants.length,
+    registrationOpen
   });
 });
 
@@ -105,8 +109,20 @@ app.post('/api/join', (req, res) => {
   res.json(result);
 });
 
+// HTTP üzerinden katılımı durdurma / açma desteği
+app.post('/api/toggle-registration', (req, res) => {
+  registrationOpen = !registrationOpen;
+  io.emit('registration_status_changed', { registrationOpen });
+  res.json({ success: true, registrationOpen });
+});
+
 // Katılımcı ekleme mantığı ve mükerrer kontrolü
 function addParticipant(name, studentId) {
+  // 1. Canlı katılım açık mı kontrolü
+  if (!registrationOpen) {
+    return { success: false, message: 'Çekiliş kayıtları geçici olarak durdurulmuştur.' };
+  }
+
   const cleanName = (name || '').trim();
   const cleanStudentId = (studentId || '').trim();
 
@@ -114,25 +130,19 @@ function addParticipant(name, studentId) {
     return { success: false, message: 'Lütfen geçerli bir Ad Soyad giriniz (en az 2 karakter).' };
   }
 
-  if (!cleanStudentId || cleanStudentId.length < 2) {
-    return { success: false, message: 'Lütfen geçerli bir Öğrenci Numarası veya Telefon giriniz.' };
+  // 2. 9 Haneli Öğrenci Numarası Doğrulaması (Sadece rakam ve tam 9 basamak)
+  const studentIdRegex = /^\d{9}$/;
+  if (!studentIdRegex.test(cleanStudentId)) {
+    return { success: false, message: 'Öğrenci numarası tam olarak 9 basamaklı rakamlardan oluşmalıdır!' };
   }
 
-  // Mükerrer kontrolü (Büyük/küçük harf ve boşluk duyarsız)
+  // 3. Mükerrer Kayıt Engeli (Aynı öğrenci numarası ile yalnızca 1 kez kayıt)
   const isDuplicateId = participants.some(
-    p => p.studentId.toLowerCase() === cleanStudentId.toLowerCase()
+    p => p.studentId === cleanStudentId
   );
 
   if (isDuplicateId) {
-    return { success: false, message: 'Bu Öğrenci Numarası / Telefon ile zaten kayıt olunmuş!' };
-  }
-
-  const isDuplicateName = participants.some(
-    p => p.name.toLowerCase() === cleanName.toLowerCase()
-  );
-
-  if (isDuplicateName) {
-    return { success: false, message: 'Bu Ad Soyad ile zaten kayıt olunmuş!' };
+    return { success: false, message: 'Bu öğrenci numarası ile zaten kayıt yapılmış!' };
   }
 
   const newParticipant = {
@@ -192,7 +202,15 @@ io.on('connection', async (socket) => {
   socket.emit('init_data', {
     participants,
     mobileJoinUrl: clientJoinUrl,
-    qrDataUrl: clientQr
+    qrDataUrl: clientQr,
+    registrationOpen
+  });
+
+  // Yönetici: Katılımı Durdur / Başlat (Toggle Registration)
+  socket.on('toggle_registration', () => {
+    registrationOpen = !registrationOpen;
+    io.emit('registration_status_changed', { registrationOpen });
+    console.log(`[Katılım Durumu Güncellendi] registrationOpen = ${registrationOpen}`);
   });
 
   // Mobil veya harici kayıttan gelen 'join_draw' olayı

@@ -1,6 +1,6 @@
 /**
  * E-Arena ve Teknoloji Topluluğu - Sahne İstemci Yönetimi (client.js)
- * Socket.io Gerçek Zamanlı Veri Akışı, Çark ve Konfeti Entegrasyonu
+ * Socket.io Gerçek Zamanlı Veri Akışı, Çark, Kayıt Kontrolü ve Konfeti Entegrasyonu
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -12,9 +12,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const resetBtn = document.getElementById('resetBtn');
   const soundBtn = document.getElementById('soundBtn');
   const addSampleBtn = document.getElementById('addSampleBtn');
+  const toggleRegBtn = document.getElementById('toggleRegBtn');
 
   const qrImage = document.getElementById('qrImage');
   const qrUrlText = document.getElementById('qrUrlText');
+  const regStatusPill = document.getElementById('regStatusPill');
   const participantCount = document.getElementById('participantCount');
   const participantsList = document.getElementById('participantsList');
 
@@ -28,8 +30,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const wheel = new ArenaWheel('wheelCanvas', 'wheelPointer');
 
   let currentParticipants = [];
+  let isRegistrationOpen = true;
 
-  // Konfeti Efekti (E-Arena Bordo, Kırmızı ve Gümüş/Altın Tonları)
+  // Konfeti Efekti (E-Arena Bordo, Gümüş ve Altın Tonları)
   function launchArenaConfetti() {
     if (typeof confetti === 'function') {
       const colors = ['#800020', '#8B0029', '#630018', '#420010', '#ffffff', '#e2e8f0', '#ffd700'];
@@ -55,6 +58,33 @@ document.addEventListener('DOMContentLoaded', () => {
           requestAnimationFrame(frame);
         }
       })();
+    }
+  }
+
+  // Katılım Açık / Kapalı Durumunu Arayüzde Güncelle
+  function updateRegistrationUi(isOpen) {
+    isRegistrationOpen = Boolean(isOpen);
+
+    if (toggleRegBtn) {
+      if (isRegistrationOpen) {
+        toggleRegBtn.className = 'btn-secondary reg-btn close-mode';
+        toggleRegBtn.innerHTML = '<span>🔴 Katılımları Kapat</span>';
+        toggleRegBtn.title = 'Yeni katılımcı kaydını durdurmak için tıklayın';
+      } else {
+        toggleRegBtn.className = 'btn-secondary reg-btn open-mode';
+        toggleRegBtn.innerHTML = '<span>🟢 Katılımları Aç</span>';
+        toggleRegBtn.title = 'Yeni katılımcı kaydını tekrar başlatmak için tıklayın';
+      }
+    }
+
+    if (regStatusPill) {
+      if (isRegistrationOpen) {
+        regStatusPill.className = 'reg-pill open';
+        regStatusPill.textContent = 'Katılımlar Açık';
+      } else {
+        regStatusPill.className = 'reg-pill closed';
+        regStatusPill.textContent = 'Katılımlar Durduruldu';
+      }
     }
   }
 
@@ -116,7 +146,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (data.mobileJoinUrl) {
       qrUrlText.textContent = data.mobileJoinUrl;
     }
+    if (data.registrationOpen !== undefined) {
+      updateRegistrationUi(data.registrationOpen);
+    }
     renderParticipantList(data.participants || []);
+  });
+
+  // Katılım durumu (Açık/Kapalı) değiştiğinde
+  socket.on('registration_status_changed', (data) => {
+    if (data.registrationOpen !== undefined) {
+      updateRegistrationUi(data.registrationOpen);
+    }
   });
 
   // Katılımcı listesi güncellendiğinde
@@ -132,6 +172,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==========================================================================
   // ETKİLEŞİMLER & BUTONLAR
   // ==========================================================================
+
+  // Yönetici: Katılımı Durdur / Aç (Toggle Registration)
+  if (toggleRegBtn) {
+    toggleRegBtn.addEventListener('click', () => {
+      socket.emit('toggle_registration');
+    });
+  }
 
   // Çarkı Çevir
   spinBtn.addEventListener('click', () => {
@@ -155,9 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Konfeti patlat
       launchArenaConfetti();
 
-      // KRİTİK GEREKSİNİM:
-      // "Kazanan belirlendikten sonra otomatik olarak çarktan ve listeden düşürülmeli,
-      // çark kalan kişilerle anında yeniden çizilmelidir."
+      // Kazanan otomatik olarak listeden ve çarktan düşürülür
       socket.emit('remove_winner', winner);
     });
   });

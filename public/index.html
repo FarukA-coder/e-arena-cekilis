@@ -65,6 +65,9 @@
         <button id="spinBtn" class="btn-spin" disabled>
           <span>🎲 ÇARK'I ÇEVİR</span>
         </button>
+        <button id="toggleRegBtn" class="btn-secondary reg-btn close-mode" title="Katılımcı kaydını durdurur veya yeniden açar">
+          <span>🔴 Katılımları Kapat</span>
+        </button>
         <button id="addSampleBtn" class="btn-secondary" title="Sunum öncesi prova için 8 adet örnek katılımcı ekler">
           <span>⚡ Hızlı Test Ekle</span>
         </button>
@@ -83,7 +86,10 @@
       <!-- QR Katılım Kartı -->
       <div class="panel-card qr-card">
         <div class="qr-header">
-          <h3>Çekilişe Katıl</h3>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 0.6rem; margin-bottom: 0.35rem;">
+            <h3>Çekilişe Katıl</h3>
+            <span id="regStatusPill" class="reg-pill open">Katılımlar Açık</span>
+          </div>
           <p>Telefon kameranla QR kodu tara ve ismini yaz!</p>
         </div>
         
