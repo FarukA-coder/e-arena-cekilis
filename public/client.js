@@ -145,6 +145,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (data.mobileJoinUrl) {
       qrUrlText.textContent = data.mobileJoinUrl;
+      if (qrUrlText.tagName && qrUrlText.tagName.toLowerCase() === 'a') {
+        qrUrlText.href = data.mobileJoinUrl;
+      }
     }
     if (data.registrationOpen !== undefined) {
       updateRegistrationUi(data.registrationOpen);

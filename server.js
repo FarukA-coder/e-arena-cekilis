@@ -28,44 +28,14 @@ let participants = [];
 // Canlı Katılım Durumu (Yönetici Kontrolü - Varsayılan: Açık)
 let registrationOpen = true;
 
-// Yerel IP Adresini otomatik tespit etme
-function getLocalIpAddress() {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const net of interfaces[name]) {
-      if (net.family === 'IPv4' && !net.internal) {
-        return net.address;
-      }
-    }
-  }
-  return 'localhost';
-}
+// Mobil Katılım URL'i (Render Canlı Yayını)
+const MOBILE_URL = process.env.BASE_URL || 'https://e-arena-cekilis.onrender.com/katil.html';
+let qrDataUrl = '';
 
-// Render, Özel Domain (Custom Domain) veya Yerel Ağ için Dinamik Base URL
-function getBaseUrl(reqOrSocket) {
-  if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, '');
-  if (process.env.RENDER_EXTERNAL_URL) return process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '');
-  
-  const headers = reqOrSocket?.headers || reqOrSocket?.handshake?.headers;
-  if (headers && headers.host) {
-    const host = headers.host;
-    // Eğer localhost değilse (Render, ngrok, custom domain vb.)
-    if (!host.startsWith('localhost') && !host.startsWith('127.0.0.1')) {
-      const proto = headers['x-forwarded-proto'] || (headers.referer?.startsWith('https') ? 'https' : 'http');
-      return `${proto}://${host}`;
-    }
-  }
-  
-  const localIp = getLocalIpAddress();
-  return `http://${localIp}:${PORT}`;
-}
-
-const qrCache = new Map();
-
-async function getQrCodeForUrl(url) {
-  if (qrCache.has(url)) return qrCache.get(url);
+// QRCode ile data URL formatında QR kod görseli üret
+async function generateQrCode() {
   try {
-    const dataUrl = await QRCode.toDataURL(url, {
+    qrDataUrl = await QRCode.toDataURL(MOBILE_URL, {
       width: 320,
       margin: 1.5,
       color: {
@@ -74,22 +44,20 @@ async function getQrCodeForUrl(url) {
       },
       errorCorrectionLevel: 'M'
     });
-    qrCache.set(url, dataUrl);
-    return dataUrl;
+    console.log(`[QR Kod Üretildi] Canlı Katılım Bağlantısı: ${MOBILE_URL}`);
   } catch (err) {
     console.error('QR Kod üretilemedi:', err);
-    return '';
   }
 }
 
 // REST API Uç Noktaları
 app.get('/api/info', async (req, res) => {
-  const baseUrl = getBaseUrl(req);
-  const joinUrl = `${baseUrl}/katil.html`;
-  const qrUrl = await getQrCodeForUrl(joinUrl);
+  if (!qrDataUrl) {
+    await generateQrCode();
+  }
   res.json({
-    mobileJoinUrl: joinUrl,
-    qrDataUrl: qrUrl,
+    mobileJoinUrl: MOBILE_URL,
+    qrDataUrl,
     participantCount: participants.length,
     registrationOpen
   });
@@ -194,15 +162,15 @@ function resetParticipants() {
 
 // Socket.io Bağlantı Olayları
 io.on('connection', async (socket) => {
-  const baseUrl = getBaseUrl(socket);
-  const clientJoinUrl = `${baseUrl}/katil.html`;
-  const clientQr = await getQrCodeForUrl(clientJoinUrl);
+  if (!qrDataUrl) {
+    await generateQrCode();
+  }
 
   // Yeni bağlanan istemciye güncel verileri ilet
   socket.emit('init_data', {
     participants,
-    mobileJoinUrl: clientJoinUrl,
-    qrDataUrl: clientQr,
+    mobileJoinUrl: MOBILE_URL,
+    qrDataUrl,
     registrationOpen
   });
 
@@ -249,15 +217,13 @@ io.on('connection', async (socket) => {
 
 // Başlatma
 async function startServer() {
-  const defaultBaseUrl = getBaseUrl();
-  const defaultJoinUrl = `${defaultBaseUrl}/katil.html`;
-  await getQrCodeForUrl(defaultJoinUrl);
+  await generateQrCode();
 
   server.listen(PORT, () => {
     console.log('====================================================');
     console.log('⚡ E-ARENA VE TEKNOLOJİ TOPLULUĞU ÇEKİLİŞ ÇARKI SUNUCUSU');
     console.log(`🚀 Sahne / Projeksiyon Ekranı: http://localhost:${PORT}`);
-    console.log(`📱 Mobil Katılım URL:         ${defaultJoinUrl}`);
+    console.log(`📱 Mobil Katılım URL:         ${MOBILE_URL}`);
     console.log('====================================================');
   });
 }
