@@ -70,16 +70,16 @@
       <div id="ticketSuccess" class="ticket-success" style="display: none;">
         <div class="ticket-icon">✓</div>
         
-        <h2 style="font-family: var(--font-heading); font-size: 1.25rem; color: #ffffff;">
-          Çekilişe Katıldınız!
+        <h2 style="font-family: var(--font-heading); font-size: 1.25rem; color: #ffffff; margin-bottom: 0.2rem;">
+          🎉 Çekilişe Başarıyla Katıldınız!
         </h2>
-        <p style="font-size: 0.85rem; color: var(--silver-muted); margin-top: -0.5rem;">
-          İsminiz sahnedeki çarka eklendi. Gözünüz ana ekranda olsun!
+        <p style="font-size: 0.88rem; color: var(--silver-muted); margin-top: 0; margin-bottom: 1rem; line-height: 1.4; text-align: center;">
+          Çekilişi sahne ekranından takip edebilirsiniz. Bol şans!
         </p>
 
         <div class="ticket-details">
           <div class="detail-row">
-            <span class="detail-label">Katılımcı:</span>
+            <span class="detail-label">Ad Soyad:</span>
             <span class="detail-value" id="ticketName">-</span>
           </div>
           <div class="detail-row">
@@ -91,10 +91,6 @@
             <span class="detail-value" style="color: #4ade80;">Aktif Katılımcı 🎯</span>
           </div>
         </div>
-
-        <button type="button" id="reRegisterBtn" class="btn-secondary" style="margin-top: 0.8rem; font-size: 0.8rem;">
-          Başka Bir Kişi Kaydet
-        </button>
       </div>
 
     </div>
@@ -116,7 +112,6 @@
       const ticketSuccess = document.getElementById('ticketSuccess');
       const ticketName = document.getElementById('ticketName');
       const ticketId = document.getElementById('ticketId');
-      const reRegisterBtn = document.getElementById('reRegisterBtn');
 
       let isRegistrationOpen = true;
 
@@ -160,18 +155,6 @@
         hideAlert();
       }
 
-      function showForm() {
-        joinForm.style.display = 'flex';
-        ticketSuccess.style.display = 'none';
-        nameInput.value = '';
-        studentIdInput.value = '';
-        hideAlert();
-        updateRegistrationState(isRegistrationOpen);
-        if (isRegistrationOpen) {
-          nameInput.focus();
-        }
-      }
-
       // Socket Bağlantı ve Durum Dinleyicileri
       socket.on('init_data', (data) => {
         if (data.registrationOpen !== undefined) {
@@ -185,12 +168,12 @@
         }
       });
 
-      // Daha önce katılmış mı kontrol et (LocalStorage)
+      // Daha önce katılmış mı kontrol et (LocalStorage ile tekil katılım kilidi)
       const savedUser = localStorage.getItem('earena_participant');
       if (savedUser) {
         try {
           const parsed = JSON.parse(savedUser);
-          if (parsed && parsed.name) {
+          if (parsed && parsed.name && parsed.studentId) {
             showTicket(parsed);
           }
         } catch(e) {
@@ -241,12 +224,6 @@
             showAlert(response?.message || 'Kayıt sırasında bir hata oluştu!');
           }
         });
-      });
-
-      // Farklı kişi kaydetmek istenirse
-      reRegisterBtn.addEventListener('click', () => {
-        localStorage.removeItem('earena_participant');
-        showForm();
       });
     });
   </script>

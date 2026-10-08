@@ -102,9 +102,9 @@ app.post('/api/join', (req, res) => {
 });
 
 // Katılımcı ekleme mantığı ve mükerrer kontrolü
-function addParticipant(name, studentId) {
-  // 1. Canlı katılım açık mı kontrolü
-  if (!registrationOpen) {
+function addParticipant(name, studentId, isAdminBypass = false) {
+  // 1. Canlı katılım açık mı kontrolü (Yönetici manuel eklemelerinde bypass edilebilir)
+  if (!registrationOpen && !isAdminBypass) {
     return { success: false, message: 'Çekiliş kayıtları geçici olarak durdurulmuştur.' };
   }
 
@@ -147,18 +147,19 @@ function addParticipant(name, studentId) {
   return { success: true, participant: newParticipant };
 }
 
-// Kazananı listeden çıkarma
-function removeWinner(identifier) {
+// Katılımcıyı listeden çıkarma (Kazanan veya manuel silme)
+function removeParticipant(identifier) {
   if (!identifier) return false;
   const initialLen = participants.length;
-  
+
   participants = participants.filter(p => {
     if (typeof identifier === 'object') {
       if (identifier.id && p.id === identifier.id) return false;
-      if (identifier.studentId && p.studentId.toLowerCase() === identifier.studentId.toLowerCase()) return false;
+      if (identifier.studentId && p.studentId === identifier.studentId) return false;
       if (identifier.name && p.name.toLowerCase() === identifier.name.toLowerCase()) return false;
     } else {
-      if (p.id === identifier || p.studentId === identifier || p.name === identifier) return false;
+      const clean = String(identifier).trim();
+      if (p.id === clean || p.studentId === clean) return false;
     }
     return true;
   });
@@ -166,7 +167,8 @@ function removeWinner(identifier) {
   const removed = participants.length < initialLen;
   if (removed) {
     io.emit('update_participants', participants);
-    io.emit('winner_removed', identifier);
+    io.emit('participant_removed', identifier);
+    console.log('[Katılımcı Çıkarıldı]', identifier);
   }
   return removed;
 }
@@ -176,6 +178,7 @@ function resetParticipants() {
   participants = [];
   io.emit('update_participants', participants);
   io.emit('list_cleared');
+  console.log('[Liste Sıfırlandı] Tüm katılımcılar temizlendi.');
 }
 
 // Socket.io Bağlantı Olayları
@@ -213,25 +216,29 @@ io.on('connection', async (socket) => {
   });
 
   // Yönetici Yetki Kontrolü Yardımcısı
-  function checkAdmin(callback) {
-    if (!socket.data || !socket.data.isAdmin) {
-      if (typeof callback === 'function') {
-        callback({ success: false, message: 'Yetkisiz erişim! Yönetici girişi gereklidir.' });
-      }
-      console.warn(`[Yetkisiz İşlem Reddedildi] Socket ID: ${socket.id}`);
-      return false;
+  function checkAdmin(data, callback) {
+    const cb = typeof data === 'function' ? data : callback;
+    const token = typeof data === 'object' ? data?.token : null;
+    if (socket.data?.isAdmin || (token && token === ADMIN_TOKEN)) {
+      socket.data.isAdmin = true;
+      return true;
     }
-    return true;
+    if (typeof cb === 'function') {
+      cb({ success: false, message: 'Yetkisiz erişim! Yönetici girişi gereklidir.' });
+    }
+    console.warn(`[Yetkisiz İşlem Reddedildi] Socket ID: ${socket.id}`);
+    return false;
   }
 
   // Yönetici: Katılımı Durdur / Başlat (Toggle Registration)
-  socket.on('toggle_registration', (callback) => {
-    if (!checkAdmin(callback)) return;
+  socket.on('toggle_registration', (data, callback) => {
+    if (!checkAdmin(data, callback)) return;
     registrationOpen = !registrationOpen;
     io.emit('registration_status_changed', { registrationOpen });
     console.log(`[Katılım Durumu Güncellendi] registrationOpen = ${registrationOpen}`);
-    if (typeof callback === 'function') {
-      callback({ success: true, registrationOpen });
+    const cb = typeof data === 'function' ? data : callback;
+    if (typeof cb === 'function') {
+      cb({ success: true, registrationOpen });
     }
   });
 
@@ -243,27 +250,60 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // Kazanan belirlendiğinde otomatik çıkarma (Yönetici yetkisi gerekir)
-  socket.on('remove_winner', (winnerData, callback) => {
-    if (!checkAdmin(callback)) return;
-    removeWinner(winnerData);
-    if (typeof callback === 'function') {
-      callback({ success: true });
+  // Yönetici Ekranından Manuel Katılımcı Ekleme
+  socket.on('admin_add_participant', (data, callback) => {
+    if (!checkAdmin(data, callback)) return;
+    const result = addParticipant(data?.name, data?.studentId, true);
+    const cb = typeof callback === 'function' ? callback : (typeof data === 'function' ? data : null);
+    if (typeof cb === 'function') {
+      cb(result);
     }
   });
 
-  // Yönetici listeyi sıfırladığında (Yönetici yetkisi gerekir)
-  socket.on('reset_list', (callback) => {
-    if (!checkAdmin(callback)) return;
+  // Katılımcıyı Manuel Olarak Silme
+  socket.on('remove_participant', (data, callback) => {
+    if (!checkAdmin(data, callback)) return;
+    const identifier = data?.studentId || data?.id || data;
+    const removed = removeParticipant(identifier);
+    const cb = typeof data === 'function' ? data : callback;
+    if (typeof cb === 'function') {
+      cb({ success: removed });
+    }
+  });
+
+  // Kazanan belirlendiğinde listeden çıkarma
+  socket.on('remove_winner', (data, callback) => {
+    if (!checkAdmin(data, callback)) return;
+    const identifier = data?.winner || data?.studentId ? (data.winner || data) : data;
+    const removed = removeParticipant(identifier);
+    const cb = typeof data === 'function' ? data : callback;
+    if (typeof cb === 'function') {
+      cb({ success: removed });
+    }
+  });
+
+  // Yönetici listeyi sıfırladığında (reset_participants ve reset_list)
+  socket.on('reset_participants', (data, callback) => {
+    if (!checkAdmin(data, callback)) return;
     resetParticipants();
-    if (typeof callback === 'function') {
-      callback({ success: true });
+    const cb = typeof data === 'function' ? data : callback;
+    if (typeof cb === 'function') {
+      cb({ success: true });
+    }
+  });
+
+  socket.on('reset_list', (data, callback) => {
+    if (!checkAdmin(data, callback)) return;
+    resetParticipants();
+    const cb = typeof data === 'function' ? data : callback;
+    if (typeof cb === 'function') {
+      cb({ success: true });
     }
   });
 
   // Test verisi ekleme talebi (Yönetici yetkisi gerekir)
-  socket.on('add_sample_data', (callback) => {
-    if (!checkAdmin(callback)) return;
+  socket.on('add_sample_data', (data, callback) => {
+    if (!checkAdmin(data, callback)) return;
     const samples = [
       { name: 'Ahmet Yılmaz', studentId: '220101001' },
       { name: 'Zeynep Kaya', studentId: '220101002' },
@@ -275,8 +315,9 @@ io.on('connection', async (socket) => {
       { name: 'Merve Arslan', studentId: '210101008' }
     ];
     samples.forEach(s => addParticipant(s.name, s.studentId));
-    if (typeof callback === 'function') {
-      callback({ success: true });
+    const cb = typeof data === 'function' ? data : callback;
+    if (typeof cb === 'function') {
+      cb({ success: true });
     }
   });
 });

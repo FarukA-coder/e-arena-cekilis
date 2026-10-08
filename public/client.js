@@ -20,6 +20,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const participantCount = document.getElementById('participantCount');
   const participantsList = document.getElementById('participantsList');
 
+  // Hızlı Manuel Katılımcı Ekleme Elemanları
+  const manualAddForm = document.getElementById('manualAddForm');
+  const manualNameInput = document.getElementById('manualNameInput');
+  const manualStudentIdInput = document.getElementById('manualStudentIdInput');
+  const manualAddBtn = document.getElementById('manualAddBtn');
+  const manualAddAlert = document.getElementById('manualAddAlert');
+
   // Yönetici Giriş Paneli Elemanları
   const adminAuthOverlay = document.getElementById('adminAuthOverlay');
   const adminLoginForm = document.getElementById('adminLoginForm');
@@ -33,7 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const winnerModal = document.getElementById('winnerModal');
   const winnerName = document.getElementById('winnerName');
   const winnerId = document.getElementById('winnerId');
-  const closeWinnerModalBtn = document.getElementById('closeWinnerModalBtn');
+  const removeWinnerBtn = document.getElementById('removeWinnerBtn');
+  const keepWinnerBtn = document.getElementById('keepWinnerBtn');
 
   // Çark Motorunu Başlat
   const wheel = new ArenaWheel('wheelCanvas', 'wheelPointer');
@@ -41,6 +49,20 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentParticipants = [];
   let isRegistrationOpen = true;
   let isAdminAuthenticated = false;
+  let currentWinner = null;
+
+  function getAdminToken() {
+    const saved = sessionStorage.getItem('earena_admin_auth');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed?.token || null;
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  }
 
   // ==========================================================================
   // YÖNETİCİ KİMLİK DOĞRULAMA (AUTH FLOW)
@@ -236,14 +258,21 @@ document.addEventListener('DOMContentLoaded', () => {
               <div class="p-id">${escapeHtml(p.studentId)}</div>
             </div>
           </div>
+          <button 
+            type="button" 
+            class="btn-delete-participant" 
+            title="${escapeHtml(p.name)} kişisini sil" 
+            data-student-id="${escapeHtml(p.studentId)}" 
+            data-id="${escapeHtml(p.id)}"
+          >✖</button>
         </div>
       `).join('');
     }
 
-    // Çarkı güncelle
+    // Çarkı güncelle (liste her değiştiğinde çark anında yeniden çizilir)
     wheel.setParticipants(list);
 
-    // Çark çevirme butonu durumu (yalnızca giriş yapıldıysa)
+    // Çark çevirme butonu durumu (yalnızca yönetici girişi yapıldıysa)
     if (isAdminAuthenticated) {
       spinBtn.disabled = list.length === 0 || wheel.isSpinning;
     } else {
@@ -295,10 +324,118 @@ document.addEventListener('DOMContentLoaded', () => {
     renderParticipantList(list || []);
   });
 
+  // Liste sıfırlandığında sahne ekranı temizliği
+  socket.on('list_cleared', () => {
+    if (winnerName) winnerName.textContent = '-';
+    if (winnerId) winnerId.textContent = '-';
+    if (winnerModal) winnerModal.classList.remove('active');
+    currentWinner = null;
+  });
+
   // Yeni katılımcı anında eklendiğinde
   socket.on('participant_added', (participant) => {
     // Liste renderParticipantList ile otomatik güncelleniyor
   });
+
+  // ==========================================================================
+  // MANUEL KATILIMCI EKLEME & SİLME (YÖNETİCİ KORUMALI)
+  // ==========================================================================
+
+  function showManualAlert(msg, isError = true) {
+    if (!manualAddAlert) return;
+    manualAddAlert.textContent = msg;
+    manualAddAlert.className = `manual-add-alert ${isError ? 'error' : 'success'}`;
+    manualAddAlert.style.display = 'block';
+    setTimeout(() => {
+      manualAddAlert.style.display = 'none';
+    }, 4000);
+  }
+
+  // Manuel ekleme: Öğrenci numarasını sadece rakam ve max 9 hane ile kısıtla
+  if (manualStudentIdInput) {
+    manualStudentIdInput.addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 9);
+    });
+  }
+
+  // Manuel Katılımcı Ekle Formu
+  if (manualAddForm) {
+    manualAddForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      if (!isAdminAuthenticated) {
+        showManualAlert('Katılımcı eklemek için yönetici girişi yapmalısınız!', true);
+        return;
+      }
+
+      const name = manualNameInput.value.trim();
+      const studentId = manualStudentIdInput.value.trim();
+
+      if (!name || name.length < 2) {
+        showManualAlert('Lütfen geçerli bir Ad Soyad giriniz (en az 2 karakter)!', true);
+        manualNameInput.focus();
+        return;
+      }
+
+      // 9 Haneli ve 20-26 ile başlayan öğrenci no kontrolü
+      const studentIdRegex = /^(20|21|22|23|24|25|26)\d{7}$/;
+      if (!studentIdRegex.test(studentId)) {
+        showManualAlert('Geçerli bir öğrenci numarası giriniz!', true);
+        manualStudentIdInput.focus();
+        return;
+      }
+
+      manualAddBtn.disabled = true;
+      manualAddBtn.innerHTML = '<span>Ekleniyor...</span>';
+
+      socket.emit('admin_add_participant', {
+        name,
+        studentId,
+        token: getAdminToken()
+      }, (res) => {
+        manualAddBtn.disabled = false;
+        manualAddBtn.innerHTML = '<span>➕ Katılımcı Ekle</span>';
+
+        if (res && res.success) {
+          manualNameInput.value = '';
+          manualStudentIdInput.value = '';
+          showManualAlert('Katılımcı başarıyla eklendi! ✓', false);
+        } else {
+          showManualAlert(res?.message || 'Katılımcı eklenemedi!', true);
+        }
+      });
+    });
+  }
+
+  // Listeden Tek Tek Manuel Kişi Silme (Event Delegation)
+  if (participantsList) {
+    participantsList.addEventListener('click', (e) => {
+      const delBtn = e.target.closest('.btn-delete-participant');
+      if (!delBtn) return;
+      e.stopPropagation();
+
+      if (!isAdminAuthenticated) {
+        alert('Katılımcı silmek için yönetici girişi yapmalısınız!');
+        return;
+      }
+
+      if (wheel.isSpinning) {
+        alert('Çark dönerken katılımcı silinemez!');
+        return;
+      }
+
+      const studentId = delBtn.getAttribute('data-student-id');
+      const pId = delBtn.getAttribute('data-id');
+
+      if (confirm('Bu katılımcıyı listeden ve çarktan silmek istediğinize emin misiniz?')) {
+        socket.emit('remove_participant', {
+          studentId: studentId,
+          id: pId,
+          token: getAdminToken()
+        });
+      }
+    });
+  }
 
   // ==========================================================================
   // ETKİLEŞİMLER & BUTONLAR (YÖNETİCİ KORUMALI)
@@ -311,7 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('Bu işlem için yönetici girişi yapmalısınız!');
         return;
       }
-      socket.emit('toggle_registration');
+      socket.emit('toggle_registration', { token: getAdminToken() });
     });
   }
 
@@ -328,6 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     wheel.spin((winner) => {
       // Çark durdu! Kazanan belirlendi.
+      currentWinner = winner;
       spinBtn.innerHTML = `<span>🎲 ÇARK'I ÇEVİR</span>`;
       spinBtn.disabled = currentParticipants.length <= 1;
 
@@ -340,26 +478,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Konfeti patlat
       launchArenaConfetti();
-
-      // Kazanan otomatik olarak listeden ve çarktan düşürülür
-      socket.emit('remove_winner', winner);
     });
   });
 
-  // Kazanan Modalını Kapat
-  closeWinnerModalBtn.addEventListener('click', () => {
-    winnerModal.classList.remove('active');
-  });
+  // Kazanan Modalı: "Listeden Çıkar" Butonu
+  if (removeWinnerBtn) {
+    removeWinnerBtn.addEventListener('click', () => {
+      if (currentWinner) {
+        socket.emit('remove_winner', {
+          winner: currentWinner,
+          studentId: currentWinner.studentId,
+          id: currentWinner.id,
+          token: getAdminToken()
+        });
+        currentWinner = null;
+      }
+      winnerModal.classList.remove('active');
+    });
+  }
 
-  // Listeyi Sıfırla
+  // Kazanan Modalı: "Listede Tut / Yeniden Çek" Butonu
+  if (keepWinnerBtn) {
+    keepWinnerBtn.addEventListener('click', () => {
+      currentWinner = null;
+      winnerModal.classList.remove('active');
+    });
+  }
+
+  // Listeyi Sıfırla Butonu (Onaylı & reset_participants Olayı ile)
   resetBtn.addEventListener('click', () => {
     if (!isAdminAuthenticated) {
       alert('Listeyi sıfırlamak için yönetici girişi yapmalısınız!');
       return;
     }
     if (wheel.isSpinning) return;
-    if (confirm('Tüm katılımcı listesini sıfırlamak istediğinize emin misiniz?')) {
-      socket.emit('reset_list');
+
+    if (confirm('Tüm katılımcı listesi kalıcı olarak silinecek. Emin misiniz?')) {
+      socket.emit('reset_participants', { token: getAdminToken() });
+      if (winnerName) winnerName.textContent = '-';
+      if (winnerId) winnerId.textContent = '-';
+      if (winnerModal) winnerModal.classList.remove('active');
+      currentWinner = null;
     }
   });
 
@@ -370,7 +529,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     if (wheel.isSpinning) return;
-    socket.emit('add_sample_data');
+    socket.emit('add_sample_data', { token: getAdminToken() });
   });
 
   // Ses Aç / Kapat (Herkes açıp kapatabilir)

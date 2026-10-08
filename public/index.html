@@ -113,6 +113,35 @@
           <h3>Katılımcılar</h3>
           <span class="count-badge" id="participantCount">0 Kişi</span>
         </div>
+
+        <!-- Hızlı Manuel Katılımcı Ekleme Alanı (Yönetici) -->
+        <div class="manual-add-section" id="manualAddSection">
+          <form id="manualAddForm" class="manual-add-form">
+            <div class="manual-inputs-row">
+              <input 
+                type="text" 
+                id="manualNameInput" 
+                class="manual-input" 
+                placeholder="İsim Soyisim" 
+                maxlength="40"
+                autocomplete="off"
+              >
+              <input 
+                type="text" 
+                id="manualStudentIdInput" 
+                class="manual-input" 
+                placeholder="Öğrenci No (9 Hane)" 
+                maxlength="9"
+                inputmode="numeric"
+                autocomplete="off"
+              >
+            </div>
+            <button type="submit" id="manualAddBtn" class="btn-manual-add">
+              <span>➕ Katılımcı Ekle</span>
+            </button>
+          </form>
+          <div id="manualAddAlert" class="manual-add-alert" style="display: none;"></div>
+        </div>
         
         <div class="participants-list" id="participantsList">
           <div class="empty-state">
@@ -176,10 +205,15 @@
       <div class="winner-subtitle">KAZANAN TEBRİKLER!</div>
       <h2 class="winner-name" id="winnerName">-</h2>
       <div class="winner-id-badge" id="winnerId">-</div>
-      <p class="winner-note">Kazanan katılımcı listeden düşürüldü. Çark sonraki çekiliş için hazır!</p>
-      <button class="btn-winner-confirm" id="closeWinnerModalBtn">
-        SIRADAKİ ÇEKİLİŞ
-      </button>
+      <p class="winner-note" id="winnerNote">Kazanan belirlendi! İşlem seçerek sonraki tura geçin:</p>
+      <div class="winner-actions">
+        <button class="btn-winner-confirm" id="removeWinnerBtn">
+          <span>🎁 Listeden Çıkar</span>
+        </button>
+        <button class="btn-winner-secondary" id="keepWinnerBtn">
+          <span>🔄 Listede Tut / Yeniden Çek</span>
+        </button>
+      </div>
     </div>
   </div>
 

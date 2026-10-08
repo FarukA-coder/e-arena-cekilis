@@ -552,6 +552,95 @@ body::before {
   box-shadow: 0 0 10px rgba(128, 0, 32, 0.4);
 }
 
+/* Hızlı Manuel Katılımcı Ekleme Alanı */
+.manual-add-section {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 0.75rem 0.85rem;
+  margin-bottom: 0.9rem;
+}
+
+.manual-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.manual-inputs-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.manual-input {
+  height: 35px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #ffffff;
+  font-family: var(--font-main);
+  font-size: 0.8rem;
+  padding: 0 0.7rem;
+  outline: none;
+  transition: var(--transition-smooth);
+}
+
+.manual-input:focus {
+  border-color: var(--burgundy-primary);
+  box-shadow: 0 0 10px rgba(128, 0, 32, 0.4);
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.manual-input::placeholder {
+  color: var(--silver-dark);
+  font-size: 0.75rem;
+}
+
+.btn-manual-add {
+  height: 34px;
+  background: linear-gradient(135deg, rgba(128, 0, 32, 0.85), rgba(86, 0, 21, 0.95));
+  border: 1px solid var(--border-burgundy);
+  border-radius: 8px;
+  color: #ffffff;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-smooth);
+}
+
+.btn-manual-add:hover {
+  background: linear-gradient(135deg, var(--burgundy-light), var(--burgundy-primary));
+  box-shadow: 0 4px 14px rgba(128, 0, 32, 0.5);
+  transform: translateY(-1px);
+}
+
+.manual-add-alert {
+  font-size: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  margin-top: 0.4rem;
+  text-align: center;
+  animation: fadeIn 0.3s ease;
+}
+
+.manual-add-alert.error {
+  background: rgba(220, 38, 38, 0.18);
+  border: 1px solid rgba(220, 38, 38, 0.45);
+  color: #fca5a5;
+}
+
+.manual-add-alert.success {
+  background: rgba(16, 185, 129, 0.18);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  color: #6ee7b7;
+}
+
 .participants-list {
   flex: 1;
   overflow-y: auto;
@@ -633,6 +722,33 @@ body::before {
   font-size: 0.75rem;
   color: var(--silver-muted);
   font-family: monospace;
+}
+
+/* Katılımcı Listesinden Tek Tek Manuel Kişi Silme Butonu */
+.btn-delete-participant {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.08);
+  color: #f87171;
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+}
+
+.btn-delete-participant:hover {
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #ef4444;
+  transform: scale(1.12);
+  box-shadow: 0 0 10px rgba(220, 38, 38, 0.65);
 }
 
 .empty-state {
@@ -754,29 +870,66 @@ body::before {
 }
 
 .winner-note {
-  font-size: 0.85rem;
-  color: var(--silver-muted);
+  font-size: 0.9rem;
+  color: var(--silver-light);
   margin-bottom: 1.8rem;
+}
+
+.winner-actions {
+  display: flex;
+  gap: 1.2rem;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .btn-winner-confirm {
   font-family: var(--font-heading);
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   font-weight: 700;
-  letter-spacing: 1.5px;
+  letter-spacing: 1px;
   color: #ffffff;
-  padding: 1rem 2.8rem;
+  padding: 0.95rem 2rem;
   border-radius: 50px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   background: linear-gradient(135deg, var(--burgundy-light), var(--burgundy-dark));
-  box-shadow: 0 6px 25px rgba(128, 0, 32, 0.5);
+  box-shadow: 0 6px 25px rgba(128, 0, 32, 0.55);
   cursor: pointer;
   transition: var(--transition-smooth);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .btn-winner-confirm:hover {
   transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 10px 35px rgba(139, 0, 41, 0.7);
+  box-shadow: 0 10px 35px rgba(139, 0, 41, 0.75);
+}
+
+.btn-winner-secondary {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--silver-light);
+  padding: 0.95rem 2rem;
+  border-radius: 50px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-winner-secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
 }
 
 /* ==========================================================================
