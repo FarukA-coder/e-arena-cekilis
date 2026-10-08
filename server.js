@@ -38,17 +38,17 @@ let registrationOpen = true;
 const MOBILE_URL = process.env.BASE_URL || 'https://e-arena-cekilis.onrender.com/katil.html';
 let qrDataUrl = '';
 
-// QRCode ile data URL formatında QR kod görseli üret
+// QRCode ile data URL formatında QR kod görseli üret (Standart yüksek kontrast, beyaz zemin & net kenar boşluğu)
 async function generateQrCode() {
   try {
     qrDataUrl = await QRCode.toDataURL(MOBILE_URL, {
-      width: 320,
-      margin: 1.5,
+      width: 400,
+      margin: 3,
       color: {
-        dark: '#ffffff',
-        light: '#0a0a0c'
+        dark: '#000000',
+        light: '#ffffff'
       },
-      errorCorrectionLevel: 'M'
+      errorCorrectionLevel: 'H'
     });
     console.log(`[QR Kod Üretildi] Canlı Katılım Bağlantısı: ${MOBILE_URL}`);
   } catch (err) {

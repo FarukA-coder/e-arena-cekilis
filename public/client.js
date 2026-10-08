@@ -297,7 +297,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Sunucuya ilk bağlandığında verileri al
   socket.on('init_data', (data) => {
-    if (data.qrDataUrl && (!qrImage.getAttribute('src') || qrImage.getAttribute('src') === '')) {
+    if (data.qrDataUrl) {
       qrImage.src = data.qrDataUrl;
     }
     if (data.mobileJoinUrl) {
