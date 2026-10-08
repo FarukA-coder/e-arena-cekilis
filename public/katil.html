@@ -92,12 +92,16 @@
           </div>
         </div>
 
-        <!-- 15 Dakikalık Cihaz Katılım Kilidi Geri Sayımı -->
-        <div class="cooldown-box" id="cooldownBox">
-          <div class="cooldown-title">⏳ CİHAZ KATILIM KİLİDİ</div>
-          <div class="cooldown-timer" id="cooldownTimerText">15:00</div>
-          <p class="cooldown-sub">Bu cihazdan tekrar kayıt yapılabilmesi için 15 dakika süre kısıtı bulunmaktadır. Süre dolduğunda form otomatik olarak yeniden açılacaktır.</p>
+        <!-- Cihaz Katılım Kilidi Geri Sayım Kutusu (5 Dakika) -->
+        <div id="cooldownBox" class="cooldown-box" style="display: none;">
+          <div class="cooldown-title">⏳ CİHAZ KATILIM KİLİDİ (05:00)</div>
+          <div class="cooldown-timer" id="cooldownTimer">05:00</div>
+          <p class="cooldown-sub">Bu cihazdan tekrar katılım yapabilmek için sürenin dolmasını bekleyiniz.</p>
         </div>
+
+        <button type="button" id="newJoinBtn" class="btn-secondary" style="margin-top: 1.1rem; width: 100%; font-size: 0.85rem; display: none;">
+          <span>➕ Başka Bir Kişi Kaydet</span>
+        </button>
       </div>
 
     </div>
@@ -119,11 +123,70 @@
       const ticketSuccess = document.getElementById('ticketSuccess');
       const ticketName = document.getElementById('ticketName');
       const ticketId = document.getElementById('ticketId');
-      const cooldownTimerText = document.getElementById('cooldownTimerText');
+      const newJoinBtn = document.getElementById('newJoinBtn');
+      const cooldownBox = document.getElementById('cooldownBox');
+      const cooldownTimer = document.getElementById('cooldownTimer');
 
-      const COOLDOWN_DURATION = 15 * 60 * 1000; // 15 dakika (ms)
+      const COOLDOWN_DURATION = 5 * 60 * 1000; // 5 Dakika (300 saniye)
       let cooldownInterval = null;
       let isRegistrationOpen = true;
+
+      // Cihaz Katılım Kilidi Geri Sayım Sayacı (5 Dakika)
+      function startCooldownTimer(durationMs) {
+        if (cooldownInterval) clearInterval(cooldownInterval);
+
+        const expireTime = Date.now() + durationMs;
+        localStorage.setItem('earena_device_lock_until', expireTime);
+
+        if (cooldownBox) cooldownBox.style.display = 'block';
+        if (newJoinBtn) newJoinBtn.style.display = 'none';
+
+        function update() {
+          const now = Date.now();
+          const remaining = Math.max(0, expireTime - now);
+          const totalSec = Math.floor(remaining / 1000);
+          const mins = Math.floor(totalSec / 60);
+          const secs = totalSec % 60;
+
+          if (cooldownTimer) {
+            cooldownTimer.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+          }
+
+          if (remaining <= 0) {
+            clearInterval(cooldownInterval);
+            cooldownInterval = null;
+            localStorage.removeItem('earena_device_lock_until');
+            if (cooldownTimer) cooldownTimer.textContent = '00:00';
+            if (cooldownBox) cooldownBox.style.display = 'none';
+            if (newJoinBtn) {
+              newJoinBtn.style.display = 'inline-flex';
+              newJoinBtn.innerHTML = '<span>➕ Başka Bir Kişi Kaydet</span>';
+            }
+          }
+        }
+
+        update();
+        cooldownInterval = setInterval(update, 1000);
+      }
+
+      // Sayfa açıldığında 5 dakikalık kilit süresi kontrolü
+      const savedLockUntil = localStorage.getItem('earena_device_lock_until');
+      if (savedLockUntil) {
+        const remainingMs = parseInt(savedLockUntil, 10) - Date.now();
+        if (remainingMs > 0) {
+          const savedTicket = localStorage.getItem('earena_last_ticket');
+          let ticketData = { name: 'Kayıtlı Katılımcı', studentId: '-' };
+          if (savedTicket) {
+            try {
+              ticketData = JSON.parse(savedTicket);
+            } catch (err) {}
+          }
+          showTicket(ticketData);
+          startCooldownTimer(remainingMs);
+        } else {
+          localStorage.removeItem('earena_device_lock_until');
+        }
+      }
 
       // Öğrenci numarası girişini sadece rakam ve en fazla 9 hane ile sınırla
       studentIdInput.addEventListener('input', (e) => {
@@ -157,46 +220,19 @@
         }
       }
 
-      function startCooldownTimer(joinedAt) {
-        if (cooldownInterval) clearInterval(cooldownInterval);
-
-        function tick() {
-          const now = Date.now();
-          const remaining = (joinedAt + COOLDOWN_DURATION) - now;
-
-          if (remaining <= 0) {
-            clearInterval(cooldownInterval);
-            cooldownInterval = null;
-            // 15 dakika doldu: Bu tarayıcıdan tekrar girilebilmesi için kilidi sıfırla
-            localStorage.removeItem('earena_participant');
-            showForm();
-            return;
-          }
-
-          const minutes = Math.floor(remaining / 60000);
-          const seconds = Math.floor((remaining % 60000) / 1000);
-          if (cooldownTimerText) {
-            cooldownTimerText.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-          }
-        }
-
-        tick();
-        cooldownInterval = setInterval(tick, 1000);
-      }
-
       function showTicket(data) {
         joinForm.style.display = 'none';
         ticketSuccess.style.display = 'flex';
         ticketName.textContent = data.name;
         ticketId.textContent = data.studentId;
         hideAlert();
-        startCooldownTimer(data.joinedAt || Date.now());
       }
 
       function showForm() {
-        if (cooldownInterval) {
-          clearInterval(cooldownInterval);
-          cooldownInterval = null;
+        const activeLock = localStorage.getItem('earena_device_lock_until');
+        if (activeLock && parseInt(activeLock, 10) > Date.now()) {
+          showAlert('Cihaz kilidi süresi henüz dolmadı!');
+          return;
         }
         joinForm.style.display = 'flex';
         ticketSuccess.style.display = 'none';
@@ -207,6 +243,10 @@
         if (isRegistrationOpen) {
           nameInput.focus();
         }
+      }
+
+      if (newJoinBtn) {
+        newJoinBtn.addEventListener('click', showForm);
       }
 
       // Socket Bağlantı ve Durum Dinleyicileri
@@ -222,29 +262,6 @@
         }
       });
 
-      // 15 Dakikalık Tarayıcı Katılım Kilidi Kontrolü (LocalStorage)
-      const savedUser = localStorage.getItem('earena_participant');
-      if (savedUser) {
-        try {
-          const parsed = JSON.parse(savedUser);
-          const now = Date.now();
-          const joinedAt = parsed.joinedAt || 0;
-          const remaining = (joinedAt + COOLDOWN_DURATION) - now;
-
-          if (remaining > 0 && parsed.name && parsed.studentId) {
-            // 15 dakika dolmamış, bilet ve kalan süreyi göster
-            showTicket(parsed);
-          } else {
-            // 15 dakika dolmuş, kilidi temizle ve formu aç
-            localStorage.removeItem('earena_participant');
-            showForm();
-          }
-        } catch(e) {
-          localStorage.removeItem('earena_participant');
-          showForm();
-        }
-      }
-
       // Form Gönderme
       joinForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -252,6 +269,15 @@
 
         if (!isRegistrationOpen) {
           showAlert('Çekiliş kayıtları geçici olarak durdurulmuştur!');
+          return;
+        }
+
+        const activeLock = localStorage.getItem('earena_device_lock_until');
+        if (activeLock && parseInt(activeLock, 10) > Date.now()) {
+          const remSec = Math.ceil((parseInt(activeLock, 10) - Date.now()) / 1000);
+          const m = Math.floor(remSec / 60);
+          const s = remSec % 60;
+          showAlert(`Bu cihazdan tekrar kayıt yapabilmek için ${m}:${s < 10 ? '0' : ''}${s} beklemelisiniz!`);
           return;
         }
 
@@ -281,14 +307,9 @@
           submitBtn.textContent = 'Kayıt Ol ve Katıl 🚀';
 
           if (response && response.success) {
-            const userData = {
-              name,
-              studentId,
-              id: response.participant?.id,
-              joinedAt: Date.now()
-            };
-            localStorage.setItem('earena_participant', JSON.stringify(userData));
-            showTicket(userData);
+            localStorage.setItem('earena_last_ticket', JSON.stringify({ name, studentId }));
+            showTicket({ name, studentId, id: response.participant?.id });
+            startCooldownTimer(COOLDOWN_DURATION);
           } else {
             showAlert(response?.message || 'Kayıt sırasında bir hata oluştu!');
           }

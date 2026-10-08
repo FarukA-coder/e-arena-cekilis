@@ -20,7 +20,16 @@ const PORT = process.env.PORT || 3000;
 // Yönetici Kimlik Bilgileri
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'faruk';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'earena202627';
-const ADMIN_TOKEN = crypto.randomBytes(24).toString('hex');
+const ADMIN_TOKEN = crypto.createHash('sha256').update(`${ADMIN_USERNAME}:${ADMIN_PASSWORD}:earena2026_fixed_auth`).digest('hex');
+
+// Socket.io Handshake Kimlik Doğrulama Middleware'i
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (token && token === ADMIN_TOKEN) {
+    socket.data.isAdmin = true;
+  }
+  next();
+});
 
 // Middleware
 app.use(express.json());
@@ -235,6 +244,34 @@ function removeParticipant(identifier, isWinner = false) {
   return removed;
 }
 
+// Katılımcıyı Manuel Olarak Düzenleme (İsim güncelleme)
+function editParticipant(studentId, newName) {
+  const cleanId = String(studentId || '').trim();
+  const cleanName = String(newName || '').trim();
+  if (!cleanId || !cleanName || cleanName.length < 2) {
+    return { success: false, message: 'Lütfen geçerli bir Ad Soyad giriniz (en az 2 karakter)!' };
+  }
+  let edited = false;
+  participants.forEach(p => {
+    if (p.studentId === cleanId) {
+      p.name = cleanName;
+      edited = true;
+    }
+  });
+  participantArchive.forEach(p => {
+    if (p.studentId === cleanId) {
+      p.name = cleanName;
+      edited = true;
+    }
+  });
+  if (edited) {
+    broadcastState();
+    console.log(`[Katılımcı Düzenlendi] Öğrenci No: ${cleanId}, Yeni İsim: ${cleanName}`);
+    return { success: true, message: 'Katılımcı güncellendi.' };
+  }
+  return { success: false, message: 'Katılımcı bulunamadı!' };
+}
+
 // Çıkarılmış kişiyi havuza bakarak çarka geri ekleme
 function readdParticipant(identifier) {
   if (!identifier) return { success: false, message: 'Geçersiz parametre!' };
@@ -330,7 +367,7 @@ io.on('connection', async (socket) => {
   // Yönetici Yetki Kontrolü Yardımcısı
   function checkAdmin(data, callback) {
     const cb = typeof data === 'function' ? data : callback;
-    const token = typeof data === 'object' ? data?.token : null;
+    const token = (typeof data === 'object' && data?.token) || socket.handshake.auth?.token;
     if (socket.data?.isAdmin || (token && token === ADMIN_TOKEN)) {
       socket.data.isAdmin = true;
       return true;
@@ -380,6 +417,16 @@ io.on('connection', async (socket) => {
     const cb = typeof data === 'function' ? data : callback;
     if (typeof cb === 'function') {
       cb({ success: removed });
+    }
+  });
+
+  // Katılımcıyı Manuel Olarak Düzenleme (İsim güncelleme)
+  socket.on('edit_participant', (data, callback) => {
+    if (!checkAdmin(data, callback)) return;
+    const result = editParticipant(data?.studentId, data?.newName || data?.name);
+    const cb = typeof data === 'function' ? data : callback;
+    if (typeof cb === 'function') {
+      cb(result);
     }
   });
 

@@ -4,7 +4,24 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  const socket = io();
+  function getAdminToken() {
+    const saved = sessionStorage.getItem('earena_admin_auth');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed?.token || null;
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  const socket = io({
+    auth: (cb) => {
+      cb({ token: getAdminToken() });
+    }
+  });
 
   // DOM Elemanları (Yönetim & Sahne)
   const wheelCanvas = document.getElementById('wheelCanvas');
@@ -65,19 +82,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let isAdminAuthenticated = false;
   let currentWinner = null;
 
-  function getAdminToken() {
-    const saved = sessionStorage.getItem('earena_admin_auth');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return parsed?.token || null;
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  }
-
   // ==========================================================================
   // YÖNETİCİ KİMLİK DOĞRULAMA (AUTH FLOW)
   // ==========================================================================
@@ -127,26 +131,28 @@ document.addEventListener('DOMContentLoaded', () => {
     hideAdminError();
   }
 
-  // Sayfa açıldığında sessionStorage kontrolü
-  const savedAdminAuth = sessionStorage.getItem('earena_admin_auth');
-  if (savedAdminAuth) {
-    try {
-      const parsed = JSON.parse(savedAdminAuth);
-      if (parsed && parsed.token) {
-        socket.emit('admin_login', { token: parsed.token }, (res) => {
-          if (res && res.success) {
-            setAdminLoggedIn(res);
-          } else {
-            setAdminLoggedOut();
-          }
-        });
-      }
-    } catch (e) {
+  // Socket bağlandığında veya yeniden bağlandığında yönetici yetkisini senkronize et
+  function checkAndVerifyAdminAuth() {
+    const token = getAdminToken();
+    if (token) {
+      socket.emit('admin_login', { token }, (res) => {
+        if (res && res.success) {
+          setAdminLoggedIn(res);
+        } else {
+          setAdminLoggedOut();
+        }
+      });
+    } else {
       setAdminLoggedOut();
     }
-  } else {
-    setAdminLoggedOut();
   }
+
+  socket.on('connect', () => {
+    checkAndVerifyAdminAuth();
+  });
+
+  // İlk açılışta da kontrol et
+  checkAndVerifyAdminAuth();
 
   // Yönetici Giriş Formu Gönderimi
   if (adminLoginForm) {
@@ -272,13 +278,23 @@ document.addEventListener('DOMContentLoaded', () => {
               <div class="p-id">${escapeHtml(p.studentId)}</div>
             </div>
           </div>
-          <button 
-            type="button" 
-            class="btn-delete-participant" 
-            title="${escapeHtml(p.name)} kişisini sil" 
-            data-student-id="${escapeHtml(p.studentId)}" 
-            data-id="${escapeHtml(p.id)}"
-          >✖</button>
+          <div class="p-actions">
+            <button 
+              type="button" 
+              class="btn-edit-participant" 
+              title="${escapeHtml(p.name)} kişisini düzenle" 
+              data-student-id="${escapeHtml(p.studentId)}" 
+              data-id="${escapeHtml(p.id)}"
+              data-name="${escapeHtml(p.name)}"
+            >✏️</button>
+            <button 
+              type="button" 
+              class="btn-delete-participant" 
+              title="${escapeHtml(p.name)} kişisini sil" 
+              data-student-id="${escapeHtml(p.studentId)}" 
+              data-id="${escapeHtml(p.id)}"
+            >✖</button>
+          </div>
         </div>
       `).join('');
     }
@@ -639,31 +655,76 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Listeden Tek Tek Manuel Kişi Silme (Event Delegation)
+  // Listeden Katılımcı Düzenleme & Silme (Event Delegation)
   if (participantsList) {
     participantsList.addEventListener('click', (e) => {
+      // 1. Silme İşlemi (Delete)
       const delBtn = e.target.closest('.btn-delete-participant');
-      if (!delBtn) return;
-      e.stopPropagation();
+      if (delBtn) {
+        e.stopPropagation();
 
-      if (!isAdminAuthenticated) {
-        alert('Katılımcı silmek için yönetici girişi yapmalısınız!');
+        if (!isAdminAuthenticated) {
+          alert('Katılımcı silmek için yönetici girişi yapmalısınız!');
+          return;
+        }
+
+        if (wheel.isSpinning) {
+          alert('Çark dönerken katılımcı silinemez!');
+          return;
+        }
+
+        const studentId = delBtn.getAttribute('data-student-id');
+        const pId = delBtn.getAttribute('data-id');
+
+        if (confirm(`Bu katılımcıyı (${studentId}) listeden ve çarktan silmek istediğinize emin misiniz?`)) {
+          socket.emit('remove_participant', {
+            studentId: studentId,
+            id: pId,
+            token: getAdminToken()
+          }, (res) => {
+            if (res && !res.success) {
+              alert(res?.message || 'Katılımcı silinemedi!');
+            }
+          });
+        }
         return;
       }
 
-      if (wheel.isSpinning) {
-        alert('Çark dönerken katılımcı silinemez!');
-        return;
-      }
+      // 2. Düzenleme İşlemi (Edit)
+      const editBtn = e.target.closest('.btn-edit-participant');
+      if (editBtn) {
+        e.stopPropagation();
 
-      const studentId = delBtn.getAttribute('data-student-id');
-      const pId = delBtn.getAttribute('data-id');
+        if (!isAdminAuthenticated) {
+          alert('Katılımcı düzenlemek için yönetici girişi yapmalısınız!');
+          return;
+        }
 
-      if (confirm('Bu katılımcıyı listeden ve çarktan silmek istediğinize emin misiniz?')) {
-        socket.emit('remove_participant', {
+        if (wheel.isSpinning) {
+          alert('Çark dönerken katılımcı düzenlenemez!');
+          return;
+        }
+
+        const studentId = editBtn.getAttribute('data-student-id');
+        const curName = editBtn.getAttribute('data-name') || '';
+        const newName = prompt(`Katılımcı Adı ve Soyadını güncelleyin (${studentId}):`, curName);
+
+        if (newName === null) return; // İptal edildi
+
+        const cleanNewName = newName.trim();
+        if (!cleanNewName || cleanNewName.length < 2) {
+          alert('Lütfen geçerli bir Ad Soyad giriniz (en az 2 karakter)!');
+          return;
+        }
+
+        socket.emit('edit_participant', {
           studentId: studentId,
-          id: pId,
+          newName: cleanNewName,
           token: getAdminToken()
+        }, (res) => {
+          if (res && !res.success) {
+            alert(res?.message || 'Katılımcı güncellenemedi!');
+          }
         });
       }
     });
@@ -680,7 +741,15 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('Bu işlem için yönetici girişi yapmalısınız!');
         return;
       }
-      socket.emit('toggle_registration', { token: getAdminToken() });
+      toggleRegBtn.disabled = true;
+      socket.emit('toggle_registration', { token: getAdminToken() }, (res) => {
+        toggleRegBtn.disabled = false;
+        if (res && res.success) {
+          updateRegistrationUi(res.registrationOpen);
+        } else if (res && !res.success) {
+          alert(res?.message || 'Katılım durumu değiştirilemedi!');
+        }
+      });
     });
   }
 
@@ -745,12 +814,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (wheel.isSpinning) return;
 
-    if (confirm('Tüm katılımcı listesi kalıcı olarak silinecek. Emin misiniz?')) {
-      socket.emit('reset_participants', { token: getAdminToken() });
-      if (winnerName) winnerName.textContent = '-';
-      if (winnerId) winnerId.textContent = '-';
-      if (winnerModal) winnerModal.classList.remove('active');
-      currentWinner = null;
+    if (confirm('Tüm katılımcı listesi çarktan temizlenecek. Emin misiniz?')) {
+      resetBtn.disabled = true;
+      socket.emit('reset_participants', { token: getAdminToken() }, (res) => {
+        resetBtn.disabled = false;
+        if (res && res.success) {
+          if (winnerName) winnerName.textContent = '-';
+          if (winnerId) winnerId.textContent = '-';
+          if (winnerModal) winnerModal.classList.remove('active');
+          currentWinner = null;
+        } else if (res && !res.success) {
+          alert(res?.message || 'Liste sıfırlanamadı!');
+        }
+      });
     }
   });
 
