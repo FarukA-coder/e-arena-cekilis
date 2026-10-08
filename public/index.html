@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E-Arena ve Teknoloji Topluluğu | Canlı Çekiliş Çarkı</title>
+  <meta name="description" content="E-Arena ve Teknoloji Topluluğu Gerçek Zamanlı Etkinlik Çekiliş Çarkı Sahnesi">
+  
+  <!-- Favicon & Stiller -->
+  <link rel="icon" type="image/jpeg" href="sunum logo.jpeg">
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- Canvas Confetti (Offline ve Online Tam Uyumlu) -->
+  <script src="confetti.browser.min.js"></script>
+</head>
+<body>
+
+  <!-- Üst Bar / Sahne Header -->
+  <header class="header-bar">
+    <div class="brand-section">
+      <div class="brand-logo-container">
+        <img src="sunum logo.jpeg" alt="E-Arena Logo" class="brand-logo">
+      </div>
+      <div class="brand-info">
+        <h1>E-Arena & Teknoloji Topluluğu</h1>
+        <p>Canlı Etkinlik Çekiliş Sistemi</p>
+      </div>
+    </div>
+    <div class="header-status-badge">
+      <span class="pulse-dot"></span>
+      <span>CANLI YAYIN</span>
+    </div>
+  </header>
+
+  <!-- Ana Sahne Alanı -->
+  <main class="stage-container">
+    
+    <!-- SOL / ORTA PANEL: ÇARK ALANI -->
+    <section class="wheel-section">
+      <div class="wheel-stage-wrapper">
+        <!-- Arka Plan Neon Parlama -->
+        <div class="wheel-outer-glow"></div>
+
+        <!-- Üst İbre (Pointer) -->
+        <div class="wheel-pointer" id="wheelPointer">
+          <svg viewBox="0 0 44 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M22 54L3.8 15C1.5 10 5.1 4 10.7 4H33.3C38.9 4 42.5 10 40.2 15L22 54Z" fill="url(#pointerGrad)" stroke="#ffffff" stroke-width="2.5" />
+            <circle cx="22" cy="18" r="5" fill="#ffffff" />
+            <defs>
+              <linearGradient id="pointerGrad" x1="22" y1="4" x2="22" y2="54" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#8B0029" />
+                <stop offset="0.6" stop-color="#800020" />
+                <stop offset="1" stop-color="#420010" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+
+        <!-- HTML5 Canvas Çarkı -->
+        <canvas id="wheelCanvas" width="600" height="600"></canvas>
+      </div>
+
+      <!-- Çark Kontrol Butonları -->
+      <div class="wheel-controls">
+        <button id="spinBtn" class="btn-spin" disabled>
+          <span>🎲 ÇARK'I ÇEVİR</span>
+        </button>
+        <button id="addSampleBtn" class="btn-secondary" title="Sunum öncesi prova için 8 adet örnek katılımcı ekler">
+          <span>⚡ Hızlı Test Ekle</span>
+        </button>
+        <button id="resetBtn" class="btn-secondary danger" title="Tüm katılımcı listesini temizler">
+          <span>🗑️ Listeyi Sıfırla</span>
+        </button>
+        <button id="soundBtn" class="btn-secondary">
+          <span>🔊 Ses: Açık</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- SAĞ PANEL: QR KOD & CANLI KATILIMCI YÖNETİMİ -->
+    <aside class="sidebar-panel">
+      
+      <!-- QR Katılım Kartı -->
+      <div class="panel-card qr-card">
+        <div class="qr-header">
+          <h3>Çekilişe Katıl</h3>
+          <p>Telefon kameranla QR kodu tara ve ismini yaz!</p>
+        </div>
+        
+        <div class="qr-image-wrapper">
+          <img id="qrImage" src="" alt="Katılım QR Kodu" class="qr-image">
+        </div>
+        
+        <div class="qr-url-pill" id="qrUrlText">
+          Yükleniyor...
+        </div>
+      </div>
+
+      <!-- Canlı Katılımcı Listesi -->
+      <div class="panel-card participants-card">
+        <div class="participants-header">
+          <h3>Katılımcılar</h3>
+          <span class="count-badge" id="participantCount">0 Kişi</span>
+        </div>
+        
+        <div class="participants-list" id="participantsList">
+          <div class="empty-state">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <p>Henüz katılan kimse yok.<br>QR kodu okutarak ilk siz katılın!</p>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+  </main>
+
+  <!-- KAZANAN MODAL PENCERESİ -->
+  <div class="modal-overlay" id="winnerModal">
+    <div class="winner-card">
+      <div class="winner-crown">🏆</div>
+      <div class="winner-subtitle">KAZANAN TEBRİKLER!</div>
+      <h2 class="winner-name" id="winnerName">-</h2>
+      <div class="winner-id-badge" id="winnerId">-</div>
+      <p class="winner-note">Kazanan katılımcı listeden düşürüldü. Çark sonraki çekiliş için hazır!</p>
+      <button class="btn-winner-confirm" id="closeWinnerModalBtn">
+        SIRADAKİ ÇEKİLİŞ
+      </button>
+    </div>
+  </div>
+
+  <!-- Socket.io & Uygulama Kodları -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="wheel.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>

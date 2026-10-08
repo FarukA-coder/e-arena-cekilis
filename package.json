@@ -1,0 +1,23 @@
+{
+  "name": "e-arena-cekilis-carki",
+  "version": "1.0.0",
+  "description": "E-Arena ve Teknoloji Topluluğu Canlı Etkinlik Çekiliş Çarkı",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "wheel",
+    "socket.io",
+    "express",
+    "raffle",
+    "e-arena"
+  ],
+  "author": "E-Arena",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.19.2",
+    "qrcode": "^1.5.3",
+    "socket.io": "^4.7.5"
+  }
+}
