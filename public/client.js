@@ -1,12 +1,12 @@
 /**
  * E-Arena ve Teknoloji Topluluğu - Sahne İstemci Yönetimi (client.js)
- * Socket.io Gerçek Zamanlı Veri Akışı, Çark, Kayıt Kontrolü ve Konfeti Entegrasyonu
+ * Socket.io Gerçek Zamanlı Veri Akışı, Çark, Kimlik Doğrulama, Kayıt Kontrolü ve Konfeti
  */
 
 document.addEventListener('DOMContentLoaded', () => {
   const socket = io();
 
-  // DOM Elemanları
+  // DOM Elemanları (Yönetim & Sahne)
   const wheelCanvas = document.getElementById('wheelCanvas');
   const spinBtn = document.getElementById('spinBtn');
   const resetBtn = document.getElementById('resetBtn');
@@ -20,6 +20,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const participantCount = document.getElementById('participantCount');
   const participantsList = document.getElementById('participantsList');
 
+  // Yönetici Giriş Paneli Elemanları
+  const adminAuthOverlay = document.getElementById('adminAuthOverlay');
+  const adminLoginForm = document.getElementById('adminLoginForm');
+  const adminUsernameInput = document.getElementById('adminUsernameInput');
+  const adminPasswordInput = document.getElementById('adminPasswordInput');
+  const adminSubmitBtn = document.getElementById('adminSubmitBtn');
+  const adminLoginAlert = document.getElementById('adminLoginAlert');
+  const adminLogoutBtn = document.getElementById('adminLogoutBtn');
+
   // Kazanan Modal Elemanları
   const winnerModal = document.getElementById('winnerModal');
   const winnerName = document.getElementById('winnerName');
@@ -31,6 +40,121 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentParticipants = [];
   let isRegistrationOpen = true;
+  let isAdminAuthenticated = false;
+
+  // ==========================================================================
+  // YÖNETİCİ KİMLİK DOĞRULAMA (AUTH FLOW)
+  // ==========================================================================
+
+  function showAdminError(msg) {
+    if (adminLoginAlert) {
+      adminLoginAlert.textContent = msg;
+      adminLoginAlert.style.display = 'block';
+    }
+  }
+
+  function hideAdminError() {
+    if (adminLoginAlert) {
+      adminLoginAlert.style.display = 'none';
+    }
+  }
+
+  function setAdminLoggedIn(authData) {
+    isAdminAuthenticated = true;
+    sessionStorage.setItem('earena_admin_auth', JSON.stringify({
+      token: authData.token,
+      username: authData.username
+    }));
+
+    if (adminAuthOverlay) {
+      adminAuthOverlay.classList.add('authenticated');
+    }
+    if (adminLogoutBtn) {
+      adminLogoutBtn.style.display = 'inline-flex';
+    }
+    hideAdminError();
+    spinBtn.disabled = currentParticipants.length === 0 || wheel.isSpinning;
+  }
+
+  function setAdminLoggedOut() {
+    isAdminAuthenticated = false;
+    sessionStorage.removeItem('earena_admin_auth');
+    if (adminAuthOverlay) {
+      adminAuthOverlay.classList.remove('authenticated');
+    }
+    if (adminLogoutBtn) {
+      adminLogoutBtn.style.display = 'none';
+    }
+    spinBtn.disabled = true;
+    if (adminUsernameInput) adminUsernameInput.value = '';
+    if (adminPasswordInput) adminPasswordInput.value = '';
+    hideAdminError();
+  }
+
+  // Sayfa açıldığında sessionStorage kontrolü
+  const savedAdminAuth = sessionStorage.getItem('earena_admin_auth');
+  if (savedAdminAuth) {
+    try {
+      const parsed = JSON.parse(savedAdminAuth);
+      if (parsed && parsed.token) {
+        socket.emit('admin_login', { token: parsed.token }, (res) => {
+          if (res && res.success) {
+            setAdminLoggedIn(res);
+          } else {
+            setAdminLoggedOut();
+          }
+        });
+      }
+    } catch (e) {
+      setAdminLoggedOut();
+    }
+  } else {
+    setAdminLoggedOut();
+  }
+
+  // Yönetici Giriş Formu Gönderimi
+  if (adminLoginForm) {
+    adminLoginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      hideAdminError();
+
+      const username = adminUsernameInput.value.trim();
+      const password = adminPasswordInput.value;
+
+      if (!username || !password) {
+        showAdminError('Lütfen kullanıcı adı ve şifre giriniz!');
+        return;
+      }
+
+      adminSubmitBtn.disabled = true;
+      adminSubmitBtn.textContent = 'Doğrulanıyor...';
+
+      socket.emit('admin_login', { username, password }, (res) => {
+        adminSubmitBtn.disabled = false;
+        adminSubmitBtn.textContent = 'Sisteme Giriş Yap 🔐';
+
+        if (res && res.success) {
+          setAdminLoggedIn(res);
+        } else {
+          showAdminError(res?.message || 'Hatalı kullanıcı adı veya şifre!');
+        }
+      });
+    });
+  }
+
+  // Yönetici Çıkış Butonu
+  if (adminLogoutBtn) {
+    adminLogoutBtn.addEventListener('click', () => {
+      if (confirm('Yönetici oturumunu kapatmak istediğinize emin misiniz?')) {
+        setAdminLoggedOut();
+        window.location.reload();
+      }
+    });
+  }
+
+  // ==========================================================================
+  // KONFETİ & ARAYÜZ YARDIMCILARI
+  // ==========================================================================
 
   // Konfeti Efekti (E-Arena Bordo, Gümüş ve Altın Tonları)
   function launchArenaConfetti() {
@@ -119,8 +243,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Çarkı güncelle
     wheel.setParticipants(list);
 
-    // Çark çevirme butonunun durumu
-    spinBtn.disabled = list.length === 0 || wheel.isSpinning;
+    // Çark çevirme butonu durumu (yalnızca giriş yapıldıysa)
+    if (isAdminAuthenticated) {
+      spinBtn.disabled = list.length === 0 || wheel.isSpinning;
+    } else {
+      spinBtn.disabled = true;
+    }
   }
 
   // XSS Koruması
@@ -173,18 +301,26 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // ETKİLEŞİMLER & BUTONLAR
+  // ETKİLEŞİMLER & BUTONLAR (YÖNETİCİ KORUMALI)
   // ==========================================================================
 
   // Yönetici: Katılımı Durdur / Aç (Toggle Registration)
   if (toggleRegBtn) {
     toggleRegBtn.addEventListener('click', () => {
+      if (!isAdminAuthenticated) {
+        alert('Bu işlem için yönetici girişi yapmalısınız!');
+        return;
+      }
       socket.emit('toggle_registration');
     });
   }
 
   // Çarkı Çevir
   spinBtn.addEventListener('click', () => {
+    if (!isAdminAuthenticated) {
+      alert('Çarkı çevirmek için yönetici girişi yapmalısınız!');
+      return;
+    }
     if (wheel.isSpinning || currentParticipants.length === 0) return;
 
     spinBtn.disabled = true;
@@ -193,7 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
     wheel.spin((winner) => {
       // Çark durdu! Kazanan belirlendi.
       spinBtn.innerHTML = `<span>🎲 ÇARK'I ÇEVİR</span>`;
-      spinBtn.disabled = currentParticipants.length <= 1; // 1 kişi vardıysa artık kalmayacak
+      spinBtn.disabled = currentParticipants.length <= 1;
 
       // Kazanan bilgilerini modala doldur
       winnerName.textContent = winner.name;
@@ -217,6 +353,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Listeyi Sıfırla
   resetBtn.addEventListener('click', () => {
+    if (!isAdminAuthenticated) {
+      alert('Listeyi sıfırlamak için yönetici girişi yapmalısınız!');
+      return;
+    }
     if (wheel.isSpinning) return;
     if (confirm('Tüm katılımcı listesini sıfırlamak istediğinize emin misiniz?')) {
       socket.emit('reset_list');
@@ -225,11 +365,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Hızlı Test Verisi Ekle (Provada kolaylık için)
   addSampleBtn.addEventListener('click', () => {
+    if (!isAdminAuthenticated) {
+      alert('Test verisi eklemek için yönetici girişi yapmalısınız!');
+      return;
+    }
     if (wheel.isSpinning) return;
     socket.emit('add_sample_data');
   });
 
-  // Ses Aç / Kapat
+  // Ses Aç / Kapat (Herkes açıp kapatabilir)
   soundBtn.addEventListener('click', () => {
     const isEnabled = wheel.toggleSound();
     soundBtn.innerHTML = isEnabled 
@@ -237,9 +381,9 @@ document.addEventListener('DOMContentLoaded', () => {
       : `<span>🔇 Ses: Kapalı</span>`;
   });
 
-  // Çarka tıklandığında da çevirme desteği
+  // Çarka tıklandığında da çevirme desteği (Yönetici yetkisi varsa)
   wheelCanvas.addEventListener('click', () => {
-    if (!wheel.isSpinning && currentParticipants.length > 0) {
+    if (isAdminAuthenticated && !wheel.isSpinning && currentParticipants.length > 0) {
       spinBtn.click();
     }
   });

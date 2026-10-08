@@ -26,9 +26,14 @@
         <p>Canlı Etkinlik Çekiliş Sistemi</p>
       </div>
     </div>
-    <div class="header-status-badge">
-      <span class="pulse-dot"></span>
-      <span>CANLI YAYIN</span>
+    <div class="header-right-actions">
+      <div class="header-status-badge">
+        <span class="pulse-dot"></span>
+        <span>CANLI YAYIN</span>
+      </div>
+      <button id="adminLogoutBtn" class="btn-logout" title="Yönetici Oturumunu Kapat" style="display: none;">
+        <span>🚪 Çıkış</span>
+      </button>
     </div>
   </header>
 
@@ -121,7 +126,48 @@
 
     </aside>
 
-  </main>
+  <!-- YÖNETİCİ GİRİŞ PANELİ (Admin Login Modal) -->
+  <div class="admin-auth-overlay" id="adminAuthOverlay">
+    <div class="admin-login-card">
+      <div class="admin-logo-badge">
+        <img src="sunum logo.jpeg" alt="E-Arena Logo">
+      </div>
+      <h2 class="admin-login-title">Yönetici Girişi</h2>
+      <p class="admin-login-sub">Sahne ekranını ve çekiliş çarkını yönetmek için giriş yapın.</p>
+      
+      <div id="adminLoginAlert" class="alert-toast error" style="display: none;"></div>
+      
+      <form id="adminLoginForm" class="admin-login-form">
+        <div class="form-group">
+          <label for="adminUsernameInput" class="form-label">Kullanıcı Adı</label>
+          <input 
+            type="text" 
+            id="adminUsernameInput" 
+            class="form-input" 
+            placeholder="Kullanıcı Adı" 
+            required 
+            autocomplete="username"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="adminPasswordInput" class="form-label">Şifre</label>
+          <input 
+            type="password" 
+            id="adminPasswordInput" 
+            class="form-input" 
+            placeholder="••••••••••••" 
+            required 
+            autocomplete="current-password"
+          >
+        </div>
+
+        <button type="submit" id="adminSubmitBtn" class="btn-submit" style="width: 100%; margin-top: 0.6rem;">
+          Sisteme Giriş Yap 🔐
+        </button>
+      </form>
+    </div>
+  </div>
 
   <!-- KAZANAN MODAL PENCERESİ -->
   <div class="modal-overlay" id="winnerModal">

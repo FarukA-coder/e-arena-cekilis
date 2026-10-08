@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const QRCode = require('qrcode');
 
 const app = express();
@@ -15,6 +16,11 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3000;
+
+// Yönetici Kimlik Bilgileri
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'faruk';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'earena202627';
+const ADMIN_TOKEN = crypto.randomBytes(24).toString('hex');
 
 // Middleware
 app.use(express.json());
@@ -67,6 +73,24 @@ app.get('/api/participants', (req, res) => {
   res.json(participants);
 });
 
+// Yönetici Giriş API'si
+app.post('/api/admin/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    return res.json({ success: true, token: ADMIN_TOKEN, username: ADMIN_USERNAME });
+  }
+  return res.status(401).json({ success: false, message: 'Hatalı kullanıcı adı veya şifre!' });
+});
+
+// Yönetici Oturum Doğrulama API'si
+app.post('/api/admin/verify', (req, res) => {
+  const { token } = req.body || {};
+  if (token && token === ADMIN_TOKEN) {
+    return res.json({ success: true, username: ADMIN_USERNAME });
+  }
+  return res.status(401).json({ success: false, message: 'Oturum süresi doldu veya geçersiz!' });
+});
+
 // HTTP üzerinden katılım desteği (yedek olarak)
 app.post('/api/join', (req, res) => {
   const { name, studentId } = req.body;
@@ -75,13 +99,6 @@ app.post('/api/join', (req, res) => {
     return res.status(400).json(result);
   }
   res.json(result);
-});
-
-// HTTP üzerinden katılımı durdurma / açma desteği
-app.post('/api/toggle-registration', (req, res) => {
-  registrationOpen = !registrationOpen;
-  io.emit('registration_status_changed', { registrationOpen });
-  res.json({ success: true, registrationOpen });
 });
 
 // Katılımcı ekleme mantığı ve mükerrer kontrolü
@@ -98,10 +115,11 @@ function addParticipant(name, studentId) {
     return { success: false, message: 'Lütfen geçerli bir Ad Soyad giriniz (en az 2 karakter).' };
   }
 
-  // 2. 9 Haneli Öğrenci Numarası Doğrulaması (Sadece rakam ve tam 9 basamak)
-  const studentIdRegex = /^\d{9}$/;
+  // 2. 9 Haneli ve 20-26 ile Başlayan Öğrenci Numarası Doğrulaması
+  // Kural: Tam 9 hane ve sadece '20','21','22','23','24','25','26' ile başlamalı
+  const studentIdRegex = /^(20|21|22|23|24|25|26)\d{7}$/;
   if (!studentIdRegex.test(cleanStudentId)) {
-    return { success: false, message: 'Öğrenci numarası tam olarak 9 basamaklı rakamlardan oluşmalıdır!' };
+    return { success: false, message: 'Geçerli bir öğrenci numarası giriniz!' };
   }
 
   // 3. Mükerrer Kayıt Engeli (Aynı öğrenci numarası ile yalnızca 1 kez kayıt)
@@ -174,11 +192,47 @@ io.on('connection', async (socket) => {
     registrationOpen
   });
 
+  // Yönetici Girişi / Oturum Doğrulama
+  socket.on('admin_login', (data, callback) => {
+    const { username, password, token } = data || {};
+    const isValid = (token && token === ADMIN_TOKEN) ||
+                    (username === ADMIN_USERNAME && password === ADMIN_PASSWORD);
+    
+    if (isValid) {
+      socket.data.isAdmin = true;
+      if (typeof callback === 'function') {
+        callback({ success: true, token: ADMIN_TOKEN, username: ADMIN_USERNAME });
+      }
+      console.log(`[Yönetici Doğrulandı] Socket ID: ${socket.id}`);
+    } else {
+      socket.data.isAdmin = false;
+      if (typeof callback === 'function') {
+        callback({ success: false, message: 'Hatalı kullanıcı adı veya şifre!' });
+      }
+    }
+  });
+
+  // Yönetici Yetki Kontrolü Yardımcısı
+  function checkAdmin(callback) {
+    if (!socket.data || !socket.data.isAdmin) {
+      if (typeof callback === 'function') {
+        callback({ success: false, message: 'Yetkisiz erişim! Yönetici girişi gereklidir.' });
+      }
+      console.warn(`[Yetkisiz İşlem Reddedildi] Socket ID: ${socket.id}`);
+      return false;
+    }
+    return true;
+  }
+
   // Yönetici: Katılımı Durdur / Başlat (Toggle Registration)
-  socket.on('toggle_registration', () => {
+  socket.on('toggle_registration', (callback) => {
+    if (!checkAdmin(callback)) return;
     registrationOpen = !registrationOpen;
     io.emit('registration_status_changed', { registrationOpen });
     console.log(`[Katılım Durumu Güncellendi] registrationOpen = ${registrationOpen}`);
+    if (typeof callback === 'function') {
+      callback({ success: true, registrationOpen });
+    }
   });
 
   // Mobil veya harici kayıttan gelen 'join_draw' olayı
@@ -189,29 +243,41 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // Kazanan belirlendiğinde otomatik çıkarma
-  socket.on('remove_winner', (winnerData) => {
+  // Kazanan belirlendiğinde otomatik çıkarma (Yönetici yetkisi gerekir)
+  socket.on('remove_winner', (winnerData, callback) => {
+    if (!checkAdmin(callback)) return;
     removeWinner(winnerData);
+    if (typeof callback === 'function') {
+      callback({ success: true });
+    }
   });
 
-  // Yönetici listeyi sıfırladığında
-  socket.on('reset_list', () => {
+  // Yönetici listeyi sıfırladığında (Yönetici yetkisi gerekir)
+  socket.on('reset_list', (callback) => {
+    if (!checkAdmin(callback)) return;
     resetParticipants();
+    if (typeof callback === 'function') {
+      callback({ success: true });
+    }
   });
 
-  // Test verisi ekleme talebi (isteğe bağlı sunum öncesi prova)
-  socket.on('add_sample_data', () => {
+  // Test verisi ekleme talebi (Yönetici yetkisi gerekir)
+  socket.on('add_sample_data', (callback) => {
+    if (!checkAdmin(callback)) return;
     const samples = [
       { name: 'Ahmet Yılmaz', studentId: '220101001' },
       { name: 'Zeynep Kaya', studentId: '220101002' },
       { name: 'Burak Demir', studentId: '220101003' },
-      { name: 'Elif Şahin', studentId: '220101004' },
-      { name: 'Emre Çelik', studentId: '220101005' },
-      { name: 'Selin Aydın', studentId: '220101006' },
-      { name: 'Can Özkan', studentId: '220101007' },
-      { name: 'Merve Arslan', studentId: '220101008' }
+      { name: 'Elif Şahin', studentId: '230101004' },
+      { name: 'Emre Çelik', studentId: '240101005' },
+      { name: 'Selin Aydın', studentId: '250101006' },
+      { name: 'Can Özkan', studentId: '260101007' },
+      { name: 'Merve Arslan', studentId: '210101008' }
     ];
     samples.forEach(s => addParticipant(s.name, s.studentId));
+    if (typeof callback === 'function') {
+      callback({ success: true });
+    }
   });
 });
 
@@ -224,6 +290,7 @@ async function startServer() {
     console.log('⚡ E-ARENA VE TEKNOLOJİ TOPLULUĞU ÇEKİLİŞ ÇARKI SUNUCUSU');
     console.log(`🚀 Sahne / Projeksiyon Ekranı: http://localhost:${PORT}`);
     console.log(`📱 Mobil Katılım URL:         ${MOBILE_URL}`);
+    console.log(`👤 Yönetici Kullanıcı Adı:    ${ADMIN_USERNAME}`);
     console.log('====================================================');
   });
 }
