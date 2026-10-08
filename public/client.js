@@ -140,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Sunucuya ilk bağlandığında verileri al
   socket.on('init_data', (data) => {
-    if (data.qrDataUrl) {
+    if (data.qrDataUrl && (!qrImage.getAttribute('src') || qrImage.getAttribute('src') === '')) {
       qrImage.src = data.qrDataUrl;
     }
     if (data.mobileJoinUrl) {
