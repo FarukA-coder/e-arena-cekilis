@@ -43,10 +43,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const removeWinnerBtn = document.getElementById('removeWinnerBtn');
   const keepWinnerBtn = document.getElementById('keepWinnerBtn');
 
+  // Katılımcı Havuzu & Geçmiş Modalı Elemanları
+  const archiveBtn = document.getElementById('archiveBtn');
+  const openPoolBadgeBtn = document.getElementById('openPoolBadgeBtn');
+  const poolHeaderCount = document.getElementById('poolHeaderCount');
+  const archiveModal = document.getElementById('archiveModal');
+  const closeArchiveModalBtn = document.getElementById('closeArchiveModalBtn');
+  const closeArchiveModalFooterBtn = document.getElementById('closeArchiveModalFooterBtn');
+  const archiveSearchInput = document.getElementById('archiveSearchInput');
+  const archiveListContainer = document.getElementById('archiveListContainer');
+  const clearArchiveBtn = document.getElementById('clearArchiveBtn');
+
   // Çark Motorunu Başlat
   const wheel = new ArenaWheel('wheelCanvas', 'wheelPointer');
 
   let currentParticipants = [];
+  let currentArchive = [];
+  let archiveFilter = 'all';
+  let archiveSearchQuery = '';
   let isRegistrationOpen = true;
   let isAdminAuthenticated = false;
   let currentWinner = null;
@@ -309,6 +323,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (data.registrationOpen !== undefined) {
       updateRegistrationUi(data.registrationOpen);
     }
+    if (data.archive) {
+      currentArchive = data.archive;
+      renderArchive();
+    }
     renderParticipantList(data.participants || []);
   });
 
@@ -324,6 +342,12 @@ document.addEventListener('DOMContentLoaded', () => {
     renderParticipantList(list || []);
   });
 
+  // Tüm havuz arşivi güncellendiğinde
+  socket.on('update_archive', (list) => {
+    currentArchive = list || [];
+    renderArchive();
+  });
+
   // Liste sıfırlandığında sahne ekranı temizliği
   socket.on('list_cleared', () => {
     if (winnerName) winnerName.textContent = '-';
@@ -336,6 +360,214 @@ document.addEventListener('DOMContentLoaded', () => {
   socket.on('participant_added', (participant) => {
     // Liste renderParticipantList ile otomatik güncelleniyor
   });
+
+  // ==========================================================================
+  // KATILIMCI HAVUZU & GEÇMİŞİ YÖNETİMİ
+  // ==========================================================================
+
+  function updateArchiveFilterTabs() {
+    const allCount = currentArchive.length;
+    const activeCount = currentArchive.filter(p => p.inWheel).length;
+    const removedCount = currentArchive.filter(p => !p.inWheel && !p.isWon).length;
+    const wonCount = currentArchive.filter(p => p.isWon).length;
+
+    const elAll = document.getElementById('filterCountAll');
+    const elActive = document.getElementById('filterCountActive');
+    const elRemoved = document.getElementById('filterCountRemoved');
+    const elWon = document.getElementById('filterCountWon');
+
+    if (elAll) elAll.textContent = allCount;
+    if (elActive) elActive.textContent = activeCount;
+    if (elRemoved) elRemoved.textContent = removedCount;
+    if (elWon) elWon.textContent = wonCount;
+
+    const elStatTotal = document.getElementById('archiveStatsTotal');
+    const elStatActive = document.getElementById('archiveStatsActive');
+    const elStatInactive = document.getElementById('archiveStatsInactive');
+    if (elStatTotal) elStatTotal.textContent = allCount;
+    if (elStatActive) elStatActive.textContent = activeCount;
+    if (elStatInactive) elStatInactive.textContent = allCount - activeCount;
+
+    if (poolHeaderCount) poolHeaderCount.textContent = allCount;
+  }
+
+  function renderArchive() {
+    updateArchiveFilterTabs();
+    if (!archiveListContainer) return;
+
+    let filtered = currentArchive;
+
+    // Tab filtresi
+    if (archiveFilter === 'active') {
+      filtered = filtered.filter(p => p.inWheel);
+    } else if (archiveFilter === 'removed') {
+      filtered = filtered.filter(p => !p.inWheel && !p.isWon);
+    } else if (archiveFilter === 'won') {
+      filtered = filtered.filter(p => p.isWon);
+    }
+
+    // Arama filtresi
+    if (archiveSearchQuery) {
+      const q = archiveSearchQuery.toLowerCase();
+      filtered = filtered.filter(p => 
+        (p.name && p.name.toLowerCase().includes(q)) ||
+        (p.studentId && p.studentId.includes(q))
+      );
+    }
+
+    if (filtered.length === 0) {
+      archiveListContainer.innerHTML = `
+        <div class="empty-state" style="padding: 3rem 1rem;">
+          <p>Arama kriterlerine uygun katılımcı bulunamadı.</p>
+        </div>
+      `;
+      return;
+    }
+
+    archiveListContainer.innerHTML = filtered.map((p, idx) => {
+      let statusBadge = '';
+      if (p.inWheel) {
+        statusBadge = '<span class="archive-status-badge active">🟢 Çarkta Aktif</span>';
+      } else if (p.isWon) {
+        statusBadge = '<span class="archive-status-badge won">🏆 Ödül Kazandı</span>';
+      } else {
+        statusBadge = '<span class="archive-status-badge removed">🔴 Çark Dışı</span>';
+      }
+
+      let actionBtn = '';
+      if (p.inWheel) {
+        actionBtn = `
+          <button type="button" class="btn-archive-action remove" data-student-id="${escapeHtml(p.studentId)}" data-id="${escapeHtml(p.id)}">
+            ➖ Çarktan Çıkar
+          </button>
+        `;
+      } else {
+        actionBtn = `
+          <button type="button" class="btn-archive-action readd" data-student-id="${escapeHtml(p.studentId)}" data-id="${escapeHtml(p.id)}">
+            ➕ Çarka Geri Al
+          </button>
+        `;
+      }
+
+      return `
+        <div class="archive-item ${p.inWheel ? 'is-active' : 'is-inactive'}">
+          <div class="archive-item-info">
+            <span class="p-index">${idx + 1}</span>
+            <div>
+              <div class="archive-item-name">${escapeHtml(p.name)}</div>
+              <div class="archive-item-id">${escapeHtml(p.studentId)}</div>
+            </div>
+          </div>
+          <div class="archive-item-actions">
+            ${statusBadge}
+            ${actionBtn}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Havuz Modalı Aç / Kapat
+  function openArchiveModal() {
+    if (!isAdminAuthenticated) {
+      alert('Katılımcı havuzunu görüntülemek ve yönetmek için yönetici girişi yapmalısınız!');
+      return;
+    }
+    archiveModal.classList.add('active');
+    renderArchive();
+    if (archiveSearchInput) {
+      archiveSearchInput.value = '';
+      archiveSearchQuery = '';
+      archiveSearchInput.focus();
+    }
+  }
+
+  function closeArchiveModal() {
+    if (archiveModal) {
+      archiveModal.classList.remove('active');
+    }
+  }
+
+  if (archiveBtn) archiveBtn.addEventListener('click', openArchiveModal);
+  if (openPoolBadgeBtn) openPoolBadgeBtn.addEventListener('click', openArchiveModal);
+  if (closeArchiveModalBtn) closeArchiveModalBtn.addEventListener('click', closeArchiveModal);
+  if (closeArchiveModalFooterBtn) closeArchiveModalFooterBtn.addEventListener('click', closeArchiveModal);
+
+  // Arama Girişi
+  if (archiveSearchInput) {
+    archiveSearchInput.addEventListener('input', (e) => {
+      archiveSearchQuery = e.target.value.trim();
+      renderArchive();
+    });
+  }
+
+  // Filtre Tab Butonları
+  const filterTabs = document.querySelectorAll('.filter-tab');
+  filterTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      filterTabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      archiveFilter = tab.getAttribute('data-filter') || 'all';
+      renderArchive();
+    });
+  });
+
+  // Havuz Listesinden Çarka Geri Alma veya Çıkarma (Event Delegation)
+  if (archiveListContainer) {
+    archiveListContainer.addEventListener('click', (e) => {
+      const readdBtn = e.target.closest('.btn-archive-action.readd');
+      const removeBtn = e.target.closest('.btn-archive-action.remove');
+
+      if (readdBtn) {
+        e.stopPropagation();
+        if (!isAdminAuthenticated) return;
+        const studentId = readdBtn.getAttribute('data-student-id');
+        const pId = readdBtn.getAttribute('data-id');
+
+        readdBtn.disabled = true;
+        readdBtn.textContent = 'Ekleniyor...';
+
+        socket.emit('readd_participant', {
+          studentId,
+          id: pId,
+          token: getAdminToken()
+        }, (res) => {
+          if (!res?.success) {
+            alert(res?.message || 'Katılımcı çarka eklenemedi!');
+          }
+        });
+        return;
+      }
+
+      if (removeBtn) {
+        e.stopPropagation();
+        if (!isAdminAuthenticated) return;
+        if (wheel.isSpinning) {
+          alert('Çark dönerken katılımcı çıkarılamaz!');
+          return;
+        }
+
+        const studentId = removeBtn.getAttribute('data-student-id');
+        const pId = removeBtn.getAttribute('data-id');
+
+        socket.emit('remove_participant', {
+          studentId,
+          id: pId,
+          token: getAdminToken()
+        });
+      }
+    });
+  }
+
+  // Havuzu Tamamen Sıfırlama Butonu
+  if (clearArchiveBtn) {
+    clearArchiveBtn.addEventListener('click', () => {
+      if (!isAdminAuthenticated) return;
+      if (confirm('Tüm katılımcı geçmişi ve havuz kalıcı olarak silinecek. Emin misiniz?')) {
+        socket.emit('clear_archive', { token: getAdminToken() });
+      }
+    });
+  }
 
   // ==========================================================================
   // MANUEL KATILIMCI EKLEME & SİLME (YÖNETİCİ KORUMALI)

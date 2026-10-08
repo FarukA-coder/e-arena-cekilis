@@ -91,6 +91,13 @@
             <span class="detail-value" style="color: #4ade80;">Aktif Katılımcı 🎯</span>
           </div>
         </div>
+
+        <!-- 15 Dakikalık Cihaz Katılım Kilidi Geri Sayımı -->
+        <div class="cooldown-box" id="cooldownBox">
+          <div class="cooldown-title">⏳ CİHAZ KATILIM KİLİDİ</div>
+          <div class="cooldown-timer" id="cooldownTimerText">15:00</div>
+          <p class="cooldown-sub">Bu cihazdan tekrar kayıt yapılabilmesi için 15 dakika süre kısıtı bulunmaktadır. Süre dolduğunda form otomatik olarak yeniden açılacaktır.</p>
+        </div>
       </div>
 
     </div>
@@ -112,7 +119,10 @@
       const ticketSuccess = document.getElementById('ticketSuccess');
       const ticketName = document.getElementById('ticketName');
       const ticketId = document.getElementById('ticketId');
+      const cooldownTimerText = document.getElementById('cooldownTimerText');
 
+      const COOLDOWN_DURATION = 15 * 60 * 1000; // 15 dakika (ms)
+      let cooldownInterval = null;
       let isRegistrationOpen = true;
 
       // Öğrenci numarası girişini sadece rakam ve en fazla 9 hane ile sınırla
@@ -147,12 +157,56 @@
         }
       }
 
+      function startCooldownTimer(joinedAt) {
+        if (cooldownInterval) clearInterval(cooldownInterval);
+
+        function tick() {
+          const now = Date.now();
+          const remaining = (joinedAt + COOLDOWN_DURATION) - now;
+
+          if (remaining <= 0) {
+            clearInterval(cooldownInterval);
+            cooldownInterval = null;
+            // 15 dakika doldu: Bu tarayıcıdan tekrar girilebilmesi için kilidi sıfırla
+            localStorage.removeItem('earena_participant');
+            showForm();
+            return;
+          }
+
+          const minutes = Math.floor(remaining / 60000);
+          const seconds = Math.floor((remaining % 60000) / 1000);
+          if (cooldownTimerText) {
+            cooldownTimerText.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+          }
+        }
+
+        tick();
+        cooldownInterval = setInterval(tick, 1000);
+      }
+
       function showTicket(data) {
         joinForm.style.display = 'none';
         ticketSuccess.style.display = 'flex';
         ticketName.textContent = data.name;
         ticketId.textContent = data.studentId;
         hideAlert();
+        startCooldownTimer(data.joinedAt || Date.now());
+      }
+
+      function showForm() {
+        if (cooldownInterval) {
+          clearInterval(cooldownInterval);
+          cooldownInterval = null;
+        }
+        joinForm.style.display = 'flex';
+        ticketSuccess.style.display = 'none';
+        nameInput.value = '';
+        studentIdInput.value = '';
+        hideAlert();
+        updateRegistrationState(isRegistrationOpen);
+        if (isRegistrationOpen) {
+          nameInput.focus();
+        }
       }
 
       // Socket Bağlantı ve Durum Dinleyicileri
@@ -168,16 +222,26 @@
         }
       });
 
-      // Daha önce katılmış mı kontrol et (LocalStorage ile tekil katılım kilidi)
+      // 15 Dakikalık Tarayıcı Katılım Kilidi Kontrolü (LocalStorage)
       const savedUser = localStorage.getItem('earena_participant');
       if (savedUser) {
         try {
           const parsed = JSON.parse(savedUser);
-          if (parsed && parsed.name && parsed.studentId) {
+          const now = Date.now();
+          const joinedAt = parsed.joinedAt || 0;
+          const remaining = (joinedAt + COOLDOWN_DURATION) - now;
+
+          if (remaining > 0 && parsed.name && parsed.studentId) {
+            // 15 dakika dolmamış, bilet ve kalan süreyi göster
             showTicket(parsed);
+          } else {
+            // 15 dakika dolmuş, kilidi temizle ve formu aç
+            localStorage.removeItem('earena_participant');
+            showForm();
           }
         } catch(e) {
           localStorage.removeItem('earena_participant');
+          showForm();
         }
       }
 
@@ -217,7 +281,12 @@
           submitBtn.textContent = 'Kayıt Ol ve Katıl 🚀';
 
           if (response && response.success) {
-            const userData = { name, studentId, id: response.participant?.id };
+            const userData = {
+              name,
+              studentId,
+              id: response.participant?.id,
+              joinedAt: Date.now()
+            };
             localStorage.setItem('earena_participant', JSON.stringify(userData));
             showTicket(userData);
           } else {

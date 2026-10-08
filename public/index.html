@@ -73,6 +73,9 @@
         <button id="toggleRegBtn" class="btn-secondary reg-btn close-mode" title="Katılımcı kaydını durdurur veya yeniden açar">
           <span>🔴 Katılımları Kapat</span>
         </button>
+        <button id="archiveBtn" class="btn-secondary" title="Daha önce katılan tüm kişileri gör ve çarka geri ekle">
+          <span>📋 Katılımcı Havuzu</span>
+        </button>
         <button id="addSampleBtn" class="btn-secondary" title="Sunum öncesi prova için 8 adet örnek katılımcı ekler">
           <span>⚡ Hızlı Test Ekle</span>
         </button>
@@ -110,7 +113,12 @@
       <!-- Canlı Katılımcı Listesi -->
       <div class="panel-card participants-card">
         <div class="participants-header">
-          <h3>Katılımcılar</h3>
+          <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <h3>Katılımcılar</h3>
+            <button id="openPoolBadgeBtn" class="pool-badge-link" title="Tüm kayıt geçmişini aç">
+              📋 Havuz: <span id="poolHeaderCount">0</span>
+            </button>
+          </div>
           <span class="count-badge" id="participantCount">0 Kişi</span>
         </div>
 
@@ -213,6 +221,60 @@
         <button class="btn-winner-secondary" id="keepWinnerBtn">
           <span>🔄 Listede Tut / Yeniden Çek</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TÜM KATILIMCI HAVUZU & GEÇMİŞİ MODALI (Archive / History Modal) -->
+  <div class="modal-overlay" id="archiveModal">
+    <div class="archive-modal-card">
+      <div class="archive-modal-header">
+        <div class="archive-title-group">
+          <div class="archive-badge-icon">📋</div>
+          <div>
+            <h2 class="archive-modal-title">Katılımcı Havuzu & Geçmişi</h2>
+            <p class="archive-modal-sub">Daha önce kayıt olmuş herkes. Çekilişten çıkmış olsalar dahi istediğinizi tekrar çarka alabilirsiniz.</p>
+          </div>
+        </div>
+        <button type="button" class="btn-close-modal" id="closeArchiveModalBtn" title="Kapat">✖</button>
+      </div>
+
+      <!-- Filtre ve Arama Barı -->
+      <div class="archive-toolbar">
+        <div class="archive-search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="archiveSearchInput" placeholder="İsim veya Öğrenci No ile ara..." autocomplete="off">
+        </div>
+        <div class="archive-filter-tabs">
+          <button type="button" class="filter-tab active" data-filter="all">Tümü (<span id="filterCountAll">0</span>)</button>
+          <button type="button" class="filter-tab" data-filter="active">Çarkta (<span id="filterCountActive">0</span>)</button>
+          <button type="button" class="filter-tab" data-filter="removed">Çıkarılanlar (<span id="filterCountRemoved">0</span>)</button>
+          <button type="button" class="filter-tab" data-filter="won">Kazananlar (<span id="filterCountWon">0</span>)</button>
+        </div>
+      </div>
+
+      <!-- Katılımcı Listesi Konteyneri -->
+      <div class="archive-list-container" id="archiveListContainer">
+        <!-- JS ile doldurulacak -->
+      </div>
+
+      <!-- Modal Alt Barı -->
+      <div class="archive-modal-footer">
+        <div class="archive-stats">
+          <span>Toplam Kayıt: <strong id="archiveStatsTotal">0</strong></span>
+          <span class="sep">•</span>
+          <span>Çarkta Aktif: <strong id="archiveStatsActive" style="color: #4ade80;">0</strong></span>
+          <span class="sep">•</span>
+          <span>Çark Dışı: <strong id="archiveStatsInactive" style="color: #f87171;">0</strong></span>
+        </div>
+        <div class="archive-footer-actions">
+          <button type="button" class="btn-secondary danger" id="clearArchiveBtn" title="Tüm kayıt geçmişini kalıcı olarak temizler" style="font-size: 0.78rem; padding: 0.45rem 0.9rem;">
+            <span>⚠️ Havuzu Sıfırla</span>
+          </button>
+          <button type="button" class="btn-winner-secondary" id="closeArchiveModalFooterBtn" style="padding: 0.55rem 1.4rem; font-size: 0.85rem;">
+            <span>Kapat</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>

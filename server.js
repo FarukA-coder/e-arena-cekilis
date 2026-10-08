@@ -27,9 +27,34 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Bellekte katılımcı listesi
+// Bellekte katılımcı listesi (Çarkta olanlar)
 // Yapı: { id, name, studentId, timestamp }
 let participants = [];
+
+// Tüm kayıt geçmişi ve katılımcı havuzu (Çekilişten çıksa dahi kaybolmaz)
+// Yapı: { id, name, studentId, timestamp, isWon: boolean }
+let participantArchive = [];
+
+// Arşivin anlık durumunu (çarkta aktif mi, çıkarıldı mı, kazandı mı) hesapla
+function getArchiveWithStatus() {
+  return participantArchive.map(p => {
+    const inWheel = participants.some(cur => cur.studentId === p.studentId);
+    return {
+      id: p.id,
+      name: p.name,
+      studentId: p.studentId,
+      timestamp: p.timestamp,
+      isWon: Boolean(p.isWon),
+      inWheel: inWheel,
+      status: inWheel ? 'active' : (p.isWon ? 'won' : 'removed')
+    };
+  });
+}
+
+function broadcastState() {
+  io.emit('update_participants', participants);
+  io.emit('update_archive', getArchiveWithStatus());
+}
 
 // Canlı Katılım Durumu (Yönetici Kontrolü - Varsayılan: Açık)
 let registrationOpen = true;
@@ -73,6 +98,11 @@ app.get('/api/participants', (req, res) => {
   res.json(participants);
 });
 
+// Kayıtlı Tüm Katılımcı Havuzu (Arşiv)
+app.get('/api/archive', (req, res) => {
+  res.json(getArchiveWithStatus());
+});
+
 // Yönetici Giriş API'si
 app.post('/api/admin/login', (req, res) => {
   const { username, password } = req.body || {};
@@ -101,7 +131,7 @@ app.post('/api/join', (req, res) => {
   res.json(result);
 });
 
-// Katılımcı ekleme mantığı ve mükerrer kontrolü
+// Katılımcı ekleme mantığı ve havuz yönetimi
 function addParticipant(name, studentId, isAdminBypass = false) {
   // 1. Canlı katılım açık mı kontrolü (Yönetici manuel eklemelerinde bypass edilebilir)
   if (!registrationOpen && !isAdminBypass) {
@@ -116,69 +146,150 @@ function addParticipant(name, studentId, isAdminBypass = false) {
   }
 
   // 2. 9 Haneli ve 20-26 ile Başlayan Öğrenci Numarası Doğrulaması
-  // Kural: Tam 9 hane ve sadece '20','21','22','23','24','25','26' ile başlamalı
   const studentIdRegex = /^(20|21|22|23|24|25|26)\d{7}$/;
   if (!studentIdRegex.test(cleanStudentId)) {
     return { success: false, message: 'Geçerli bir öğrenci numarası giriniz!' };
   }
 
-  // 3. Mükerrer Kayıt Engeli (Aynı öğrenci numarası ile yalnızca 1 kez kayıt)
-  const isDuplicateId = participants.some(
+  // 3. Çarkta zaten aktif mi kontrolü (Mükerrer aktif kayıt engeli)
+  const isAlreadyActive = participants.some(
     p => p.studentId === cleanStudentId
   );
 
-  if (isDuplicateId) {
-    return { success: false, message: 'Bu öğrenci numarası ile zaten kayıt yapılmış!' };
+  if (isAlreadyActive) {
+    return { success: false, message: 'Bu öğrenci numarası ile zaten çarkta aktif kayıt var!' };
+  }
+
+  // Havuzda daha önce var mı kontrolü
+  let archiveItem = participantArchive.find(p => p.studentId === cleanStudentId);
+  if (archiveItem) {
+    archiveItem.name = cleanName || archiveItem.name;
+    archiveItem.isWon = false;
+  } else {
+    archiveItem = {
+      id: Date.now().toString(36) + Math.random().toString(36).substr(2, 6),
+      name: cleanName,
+      studentId: cleanStudentId,
+      timestamp: Date.now(),
+      isWon: false
+    };
+    participantArchive.push(archiveItem);
   }
 
   const newParticipant = {
-    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 6),
-    name: cleanName,
-    studentId: cleanStudentId,
-    timestamp: Date.now()
+    id: archiveItem.id,
+    name: archiveItem.name,
+    studentId: archiveItem.studentId,
+    timestamp: archiveItem.timestamp
   };
 
   participants.push(newParticipant);
 
   // Socket.io ile tüm istemcilere anında yay
   io.emit('participant_added', newParticipant);
-  io.emit('update_participants', participants);
+  broadcastState();
 
   return { success: true, participant: newParticipant };
 }
 
-// Katılımcıyı listeden çıkarma (Kazanan veya manuel silme)
-function removeParticipant(identifier) {
+// Katılımcıyı aktif çarktan çıkarma (Kazanan veya manuel silme)
+function removeParticipant(identifier, isWinner = false) {
   if (!identifier) return false;
   const initialLen = participants.length;
 
+  let targetId = null;
+  let targetStudentId = null;
+
   participants = participants.filter(p => {
+    let match = false;
     if (typeof identifier === 'object') {
-      if (identifier.id && p.id === identifier.id) return false;
-      if (identifier.studentId && p.studentId === identifier.studentId) return false;
-      if (identifier.name && p.name.toLowerCase() === identifier.name.toLowerCase()) return false;
+      if (identifier.id && p.id === identifier.id) match = true;
+      if (identifier.studentId && p.studentId === identifier.studentId) match = true;
+      if (identifier.name && p.name.toLowerCase() === identifier.name.toLowerCase()) match = true;
     } else {
       const clean = String(identifier).trim();
-      if (p.id === clean || p.studentId === clean) return false;
+      if (p.id === clean || p.studentId === clean) match = true;
+    }
+    if (match) {
+      targetId = p.id;
+      targetStudentId = p.studentId;
+      return false;
     }
     return true;
   });
 
   const removed = participants.length < initialLen;
   if (removed) {
-    io.emit('update_participants', participants);
+    // Arşivdeki durumunu güncelle (silinmez, sadece çarktan düşer)
+    const arch = participantArchive.find(p => 
+      (targetId && p.id === targetId) || 
+      (targetStudentId && p.studentId === targetStudentId)
+    );
+    if (arch && isWinner) {
+      arch.isWon = true;
+    }
+    broadcastState();
     io.emit('participant_removed', identifier);
-    console.log('[Katılımcı Çıkarıldı]', identifier);
+    console.log(`[Katılımcı Çarktan Çıkarıldı] ID: ${targetId || identifier}, Kazanan: ${isWinner}`);
   }
   return removed;
 }
 
-// Listeyi tamamen sıfırlama
+// Çıkarılmış kişiyi havuza bakarak çarka geri ekleme
+function readdParticipant(identifier) {
+  if (!identifier) return { success: false, message: 'Geçersiz parametre!' };
+
+  let target = null;
+  if (typeof identifier === 'object') {
+    target = participantArchive.find(p => 
+      (identifier.studentId && p.studentId === identifier.studentId) ||
+      (identifier.id && p.id === identifier.id)
+    );
+  } else {
+    const clean = String(identifier).trim();
+    target = participantArchive.find(p => p.studentId === clean || p.id === clean);
+  }
+
+  if (!target) {
+    return { success: false, message: 'Katılımcı havuzda bulunamadı!' };
+  }
+
+  const alreadyActive = participants.some(p => p.studentId === target.studentId);
+  if (alreadyActive) {
+    return { success: false, message: 'Bu kişi zaten çarkta aktif!' };
+  }
+
+  const restored = {
+    id: target.id,
+    name: target.name,
+    studentId: target.studentId,
+    timestamp: Date.now()
+  };
+
+  participants.push(restored);
+  target.isWon = false;
+
+  broadcastState();
+  console.log(`[Katılımcı Çarka Geri Alındı] ${target.name} (${target.studentId})`);
+
+  return { success: true, participant: restored };
+}
+
+// Çark listesini sıfırlama (Havuz korunur!)
 function resetParticipants() {
   participants = [];
-  io.emit('update_participants', participants);
+  broadcastState();
   io.emit('list_cleared');
-  console.log('[Liste Sıfırlandı] Tüm katılımcılar temizlendi.');
+  console.log('[Liste Sıfırlandı] Çark katılımcıları temizlendi, havuz korundu.');
+}
+
+// Havuzu ve çarkı tamamen sıfırlama (İsteğe bağlı tam temizlik)
+function clearArchive() {
+  participants = [];
+  participantArchive = [];
+  broadcastState();
+  io.emit('list_cleared');
+  console.log('[Tam Temizlik] Tüm havuz ve çark temizlendi.');
 }
 
 // Socket.io Bağlantı Olayları
@@ -190,6 +301,7 @@ io.on('connection', async (socket) => {
   // Yeni bağlanan istemciye güncel verileri ilet
   socket.emit('init_data', {
     participants,
+    archive: getArchiveWithStatus(),
     mobileJoinUrl: MOBILE_URL,
     qrDataUrl,
     registrationOpen
@@ -271,11 +383,30 @@ io.on('connection', async (socket) => {
     }
   });
 
+  // Çıkarılmış katılımcıyı çarka geri alma (Havuzdan manuel sokma)
+  socket.on('readd_participant', (data, callback) => {
+    if (!checkAdmin(data, callback)) return;
+    const identifier = data?.studentId || data?.id || data;
+    const result = readdParticipant(identifier);
+    const cb = typeof data === 'function' ? data : callback;
+    if (typeof cb === 'function') {
+      cb(result);
+    }
+  });
+
+  // Kayıtlı tüm katılımcı havuzunu getirme
+  socket.on('get_archive', (data, callback) => {
+    const cb = typeof data === 'function' ? data : callback;
+    if (typeof cb === 'function') {
+      cb({ success: true, archive: getArchiveWithStatus() });
+    }
+  });
+
   // Kazanan belirlendiğinde listeden çıkarma
   socket.on('remove_winner', (data, callback) => {
     if (!checkAdmin(data, callback)) return;
     const identifier = data?.winner || data?.studentId ? (data.winner || data) : data;
-    const removed = removeParticipant(identifier);
+    const removed = removeParticipant(identifier, true);
     const cb = typeof data === 'function' ? data : callback;
     if (typeof cb === 'function') {
       cb({ success: removed });
@@ -301,6 +432,16 @@ io.on('connection', async (socket) => {
     }
   });
 
+  // Tüm havuzu ve arşivi tamamen sıfırlama
+  socket.on('clear_archive', (data, callback) => {
+    if (!checkAdmin(data, callback)) return;
+    clearArchive();
+    const cb = typeof data === 'function' ? data : callback;
+    if (typeof cb === 'function') {
+      cb({ success: true });
+    }
+  });
+
   // Test verisi ekleme talebi (Yönetici yetkisi gerekir)
   socket.on('add_sample_data', (data, callback) => {
     if (!checkAdmin(data, callback)) return;
@@ -314,7 +455,7 @@ io.on('connection', async (socket) => {
       { name: 'Can Özkan', studentId: '260101007' },
       { name: 'Merve Arslan', studentId: '210101008' }
     ];
-    samples.forEach(s => addParticipant(s.name, s.studentId));
+    samples.forEach(s => addParticipant(s.name, s.studentId, true));
     const cb = typeof data === 'function' ? data : callback;
     if (typeof cb === 'function') {
       cb({ success: true });
